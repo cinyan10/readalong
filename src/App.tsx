@@ -1096,6 +1096,77 @@ function ReaderView({
     };
   }, [activePart, bookId, chapterIndex, partAudio]);
 
+  const seekPartAudioToToken = useCallback(
+    (blockIndex: number, tokenIndex: number) => {
+      const audio = audioRef.current;
+      if (!audio || !partAudio) {
+        return false;
+      }
+
+      const key = timedTokenKey(blockIndex, tokenIndex);
+      const timedToken = timedTokensByKey.get(key);
+      const duration =
+        Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : partAudio.duration_seconds;
+      let targetTime: number | null = null;
+
+      if (timedToken) {
+        targetTime = timedToken.start_time;
+        activeTimedTokenRef.current = timedToken;
+      } else if (duration > 0) {
+        let wordCount = 0;
+        let targetWordIndex: number | null = null;
+        let previousTimedWord: { wordIndex: number; token: TimedToken } | null = null;
+        let nextTimedWord: { wordIndex: number; token: TimedToken } | null = null;
+
+        for (const block of visibleBlocks) {
+          if (block.kind !== "paragraph") {
+            continue;
+          }
+          for (let index = 0; index < block.tokens.length; index += 1) {
+            const token = block.tokens[index];
+            if (!token.normalized_text) {
+              continue;
+            }
+            const blockToken = timedTokensByKey.get(timedTokenKey(block.block_index, index));
+            if (block.block_index === blockIndex && index === tokenIndex) {
+              targetWordIndex = wordCount;
+            } else if (blockToken && targetWordIndex === null) {
+              previousTimedWord = { wordIndex: wordCount, token: blockToken };
+            } else if (blockToken && targetWordIndex !== null && nextTimedWord === null) {
+              nextTimedWord = { wordIndex: wordCount, token: blockToken };
+            }
+            wordCount += 1;
+          }
+        }
+
+        if (targetWordIndex !== null && wordCount > 0) {
+          if (previousTimedWord && nextTimedWord && nextTimedWord.token.start_time >= previousTimedWord.token.end_time) {
+            const gapWords = nextTimedWord.wordIndex - previousTimedWord.wordIndex;
+            const gapRatio = gapWords <= 0 ? 0 : (targetWordIndex - previousTimedWord.wordIndex) / gapWords;
+            targetTime =
+              previousTimedWord.token.end_time +
+              (nextTimedWord.token.start_time - previousTimedWord.token.end_time) * gapRatio;
+          } else {
+            const ratio = wordCount === 1 ? 0 : targetWordIndex / (wordCount - 1);
+            targetTime = duration * ratio;
+          }
+        }
+      }
+
+      if (targetTime === null) {
+        return false;
+      }
+
+      wordPreviewEndTimeRef.current = null;
+      wordPreviewAudioRef.current?.pause();
+      audio.currentTime = clampNumber(targetTime, 0, duration > 0 ? duration : targetTime);
+      setAudioState((current) => ({ ...current, currentTime: audio.currentTime }));
+      setActiveTokenKey(key);
+      return true;
+    },
+    [partAudio, timedTokensByKey, visibleBlocks],
+  );
+
   useEffect(() => {
     const pending = pendingRestoreRef.current;
     if (!pending || !reader || !chapter || !activePart) {
@@ -1106,11 +1177,18 @@ function ReaderView({
       pendingRestoreRef.current = null;
     };
     if (pending.kind === "bookmark") {
+      if (loadingAudio || audioLookupPendingRef.current) {
+        return;
+      }
+      if (partAudio?.alignment_available && (loadingAlignment || alignmentLookupPendingRef.current)) {
+        return;
+      }
       const key = timedTokenKey(pending.bookmark.block_index, pending.bookmark.token_index);
       const tokenElement = tokenRefs.current[key];
       visibleBlockRef.current = pending.bookmark.block_index;
       activeTimedTokenRef.current = null;
       setActiveTokenKey(key);
+      seekPartAudioToToken(pending.bookmark.block_index, pending.bookmark.token_index);
       if (tokenElement) {
         scheduleScrollRestore(() => {
           tokenElement.scrollIntoView({ block: "center" });
@@ -1202,7 +1280,7 @@ function ReaderView({
 
     restoreScrollPosition(progress, chapter);
     finishRestore();
-  }, [activePart, audioState.duration, chapter, loadingAlignment, loadingAudio, partAlignment, partAudio, reader]);
+  }, [activePart, audioState.duration, chapter, loadingAlignment, loadingAudio, partAlignment, partAudio, reader, seekPartAudioToToken]);
 
   useEffect(() => {
     if (!chapter || pendingRestoreRef.current) {
@@ -1349,6 +1427,7 @@ function ReaderView({
       visibleBlockRef.current = savedBookmark.block_index;
       activeTimedTokenRef.current = null;
       setActiveTokenKey(key);
+      seekPartAudioToToken(savedBookmark.block_index, savedBookmark.token_index);
       if (tokenElement) {
         scheduleScrollRestore(() => {
           tokenElement.scrollIntoView({ block: "center" });
@@ -1365,7 +1444,7 @@ function ReaderView({
         }
       });
     },
-    [chapter],
+    [chapter, seekPartAudioToToken],
   );
 
   const jumpToBookmark = useCallback(() => {
