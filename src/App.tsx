@@ -15,6 +15,7 @@ import {
   PauseIcon,
   PlayIcon,
   SearchIcon,
+  TimerIcon,
   Trash2Icon,
   XIcon,
   ZoomInIcon,
@@ -68,6 +69,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -87,6 +89,27 @@ type AudioGenerationProgress = {
   total: number;
   percent: number;
   stage: string;
+};
+
+type AudioQueueMode = "chapter" | "from-chapter";
+
+type AudioQueueItem = {
+  chapterIndex: number;
+  chapterTitle: string;
+  partIndex: number;
+  partTitle: string;
+  paragraphCount: number;
+  effort: number;
+};
+
+type AudioQueueState = {
+  mode: AudioQueueMode;
+  items: AudioQueueItem[];
+  currentIndex: number;
+  completedParts: number;
+  completedEffort: number;
+  totalEffort: number;
+  startedAt: number;
 };
 
 type ReaderImage = {
@@ -149,6 +172,13 @@ type WordContextMenuState = {
   tokenIndex: number;
   lookupX: number;
   lookupY: number;
+  x: number;
+  y: number;
+};
+
+type ChapterContextMenuState = {
+  chapterIndex: number;
+  title: string;
   x: number;
   y: number;
 };
@@ -507,26 +537,6 @@ function ProgressRing({ percent }: { percent: number }) {
   );
 }
 
-function AudioGenerationRing({ percent }: { percent: number }) {
-  const radius = 9;
-  const circumference = 2 * Math.PI * radius;
-  const clampedPercent = Math.max(0, Math.min(100, percent));
-  const offset = circumference * (1 - clampedPercent / 100);
-
-  return (
-    <svg className="audio-progress-ring" viewBox="0 0 24 24" aria-hidden="true">
-      <circle className="audio-progress-ring-track" cx="12" cy="12" r={radius} />
-      <circle
-        className="audio-progress-ring-fill"
-        cx="12"
-        cy="12"
-        r={radius}
-        style={{ strokeDasharray: circumference, strokeDashoffset: offset }}
-      />
-    </svg>
-  );
-}
-
 function ReaderView({
   bookId,
   initialChapterIndex,
@@ -545,6 +555,8 @@ function ReaderView({
   const [partAudio, setPartAudio] = useState<PartAudioPayload | null>(null);
   const [loadingAudio, setLoadingAudio] = useState(false);
   const [generatingAudio, setGeneratingAudio] = useState(false);
+  const [preparingAudioQueue, setPreparingAudioQueue] = useState(false);
+  const [audioQueue, setAudioQueue] = useState<AudioQueueState | null>(null);
   const [partAlignment, setPartAlignment] = useState<PartAlignmentPayload | null>(null);
   const [loadingAlignment, setLoadingAlignment] = useState(false);
   const [syncingAlignment, setSyncingAlignment] = useState(false);
@@ -564,6 +576,7 @@ function ReaderView({
   const [chapterFindScrollRequest, setChapterFindScrollRequest] = useState(0);
   const [dialogImage, setDialogImage] = useState<ReaderImage | null>(null);
   const [wordContextMenu, setWordContextMenu] = useState<WordContextMenuState | null>(null);
+  const [chapterContextMenu, setChapterContextMenu] = useState<ChapterContextMenuState | null>(null);
   const [lookupDialog, setLookupDialog] = useState<LookupDialogState | null>(null);
   const [markedWordLocations, setMarkedWordLocations] = useState<MarkedWordLocation[]>([]);
   const [imageZoom, setImageZoom] = useState(1);
@@ -593,6 +606,8 @@ function ReaderView({
   const lastChapterFindRevealKeyRef = useRef("");
   const searchRequestRef = useRef(0);
   const lookupRequestRef = useRef(0);
+  const audioQueueRunRef = useRef(0);
+  const selectedPartRef = useRef({ chapterIndex, partIndex });
 
   useEffect(() => {
     let cancelled = false;
@@ -715,6 +730,7 @@ function ReaderView({
     () => activeChapter?.parts.find((item) => item.part_index === partIndex),
     [activeChapter, partIndex],
   );
+  const currentQueueItem = audioQueue?.items[audioQueue.currentIndex] ?? null;
   const bookmark = reader?.bookmark ?? null;
   const bookmarkedTokenKey = bookmark ? timedTokenKey(bookmark.block_index, bookmark.token_index) : null;
   const wordlistRoots = useMemo(
@@ -744,6 +760,9 @@ function ReaderView({
     () => visibleBlocks.filter((block) => block.kind === "paragraph").length,
     [visibleBlocks],
   );
+  useEffect(() => {
+    selectedPartRef.current = { chapterIndex, partIndex };
+  }, [chapterIndex, partIndex]);
   const timedTokensByKey = useMemo(() => {
     const tokens = new Map<string, TimedToken>();
     for (const token of partAlignment?.tokens ?? []) {
@@ -1051,18 +1070,26 @@ function ReaderView({
   }, [saveCurrentProgress]);
 
   useEffect(() => {
-    if (!activePart) {
+    if (!activePart && !currentQueueItem) {
       return;
     }
     let disposed = false;
     let unlisten: (() => void) | null = null;
     void listen<AudioGenerationProgress>("part-audio-progress", (event) => {
       const progress = event.payload;
-      if (
-        progress.book_id !== bookId ||
-        progress.chapter_index !== chapterIndex ||
-        progress.part_index !== activePart.part_index
-      ) {
+      if (progress.book_id !== bookId) {
+        return;
+      }
+      const matchesQueue =
+        currentQueueItem &&
+        progress.chapter_index === currentQueueItem.chapterIndex &&
+        progress.part_index === currentQueueItem.partIndex;
+      const matchesActivePart =
+        !currentQueueItem &&
+        activePart &&
+        progress.chapter_index === chapterIndex &&
+        progress.part_index === activePart.part_index;
+      if (!matchesQueue && !matchesActivePart) {
         return;
       }
       setAudioProgress(progress);
@@ -1077,7 +1104,7 @@ function ReaderView({
       disposed = true;
       unlisten?.();
     };
-  }, [activePart, bookId, chapterIndex]);
+  }, [activePart, bookId, chapterIndex, currentQueueItem]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -1754,6 +1781,119 @@ function ReaderView({
     [activePart, bookId, chapterIndex, partParagraphCount],
   );
 
+  const startAudioQueue = useCallback(
+    async (startChapterIndex: number, mode: AudioQueueMode) => {
+      if (!reader || generatingAudio) {
+        return;
+      }
+      setChapterContextMenu(null);
+      const runId = audioQueueRunRef.current + 1;
+      audioQueueRunRef.current = runId;
+      setGeneratingAudio(true);
+      setPreparingAudioQueue(true);
+      setAudioProgress(null);
+      setAudioQueue(null);
+      try {
+        const targetChapters =
+          mode === "chapter"
+            ? reader.chapters.filter((item) => item.chapter_index === startChapterIndex)
+            : reader.chapters.filter((item) => item.chapter_index >= startChapterIndex);
+        const chapterPayloads = await Promise.all(
+          targetChapters.map(async (summary) => ({
+            summary,
+            payload: await getChapter(bookId, summary.chapter_index),
+          })),
+        );
+        if (audioQueueRunRef.current !== runId) {
+          return;
+        }
+        const items = chapterPayloads.flatMap(({ summary, payload }) =>
+          summary.parts.map((part) => {
+            const effort = chapterPartEffort(payload, part.start_block_index, part.end_block_index);
+            return {
+              chapterIndex: summary.chapter_index,
+              chapterTitle: summary.title,
+              partIndex: part.part_index,
+              partTitle: part.title,
+              paragraphCount: effort.paragraphCount,
+              effort: effort.characters,
+            };
+          }),
+        );
+        const totalEffort = items.reduce((total, item) => total + item.effort, 0);
+        if (!items.length || totalEffort <= 0) {
+          toast.info("No readable parts found for audio generation.");
+          return;
+        }
+        setPreparingAudioQueue(false);
+        setAudioQueue({
+          mode,
+          items,
+          currentIndex: 0,
+          completedParts: 0,
+          completedEffort: 0,
+          totalEffort,
+          startedAt: Date.now(),
+        });
+
+        let completedEffort = 0;
+        for (let index = 0; index < items.length; index += 1) {
+          if (audioQueueRunRef.current !== runId) {
+            return;
+          }
+          const item = items[index];
+          setAudioProgress({
+            book_id: bookId,
+            chapter_index: item.chapterIndex,
+            part_index: item.partIndex,
+            completed: 0,
+            total: item.paragraphCount,
+            percent: 0,
+            stage: "queued",
+          });
+          setAudioQueue((current) =>
+            current && audioQueueRunRef.current === runId
+              ? {
+                  ...current,
+                  currentIndex: index,
+                  completedParts: index,
+                  completedEffort,
+                }
+              : current,
+          );
+          const payload = await generatePartAudio(bookId, item.chapterIndex, item.partIndex, false);
+          const selectedPart = selectedPartRef.current;
+          if (payload.chapter_index === selectedPart.chapterIndex && payload.part_index === selectedPart.partIndex) {
+            setPartAudio(payload);
+          }
+          completedEffort += item.effort;
+          setAudioQueue((current) =>
+            current && audioQueueRunRef.current === runId
+              ? {
+                  ...current,
+                  completedParts: index + 1,
+                  completedEffort,
+                }
+              : current,
+          );
+        }
+        toast.success("Audio queue complete.", {
+          description: `${items.length} ${items.length === 1 ? "part" : "parts"} generated.`,
+        });
+      } catch (error) {
+        toast.error(errorMessage(error, "Audio queue failed."));
+      } finally {
+        if (audioQueueRunRef.current === runId) {
+          setGeneratingAudio(false);
+          setPreparingAudioQueue(false);
+          setAudioQueue(null);
+          setAudioProgress(null);
+        }
+      }
+    },
+    [bookId, generatingAudio, reader],
+  );
+
   const stopWordPreview = useCallback(() => {
     wordPreviewEndTimeRef.current = null;
     wordPreviewAudioRef.current?.pause();
@@ -1926,6 +2066,24 @@ function ReaderView({
   }, [wordContextMenu]);
 
   useEffect(() => {
+    if (!chapterContextMenu) {
+      return;
+    }
+    const close = () => setChapterContextMenu(null);
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        close();
+      }
+    };
+    document.addEventListener("click", close);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("click", close);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [chapterContextMenu]);
+
+  useEffect(() => {
     if (!lookupDialog) {
       return;
     }
@@ -1982,6 +2140,23 @@ function ReaderView({
       });
     },
     [chapterIndex],
+  );
+
+  const openChapterContextMenu = useCallback(
+    (targetChapterIndex: number, title: string, event: ReactMouseEvent<HTMLElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const menuWidth = 220;
+      const menuHeight = 96;
+      setWordContextMenu(null);
+      setChapterContextMenu({
+        chapterIndex: targetChapterIndex,
+        title,
+        x: clampNumber(event.clientX, 12, Math.max(12, window.innerWidth - menuWidth - 12)),
+        y: clampNumber(event.clientY, 72, Math.max(72, window.innerHeight - menuHeight - 12)),
+      });
+    },
+    [],
   );
 
   const lookupContextMenuWord = useCallback(() => {
@@ -2228,8 +2403,56 @@ function ReaderView({
   }, [seekToRelativeToken, seekToTimedToken, timedTokensByKey]);
 
   const audioGenerationPercent = Math.round(audioProgress?.percent ?? 0);
+  const queuePartPercent =
+    currentQueueItem &&
+    audioProgress?.chapter_index === currentQueueItem.chapterIndex &&
+    audioProgress.part_index === currentQueueItem.partIndex
+      ? clampNumber(audioProgress.percent, 0, 100)
+      : 0;
+  const audioQueuePercent = audioQueue
+    ? clampNumber(
+        ((audioQueue.completedEffort + (currentQueueItem?.effort ?? 0) * (queuePartPercent / 100)) /
+          audioQueue.totalEffort) *
+          100,
+        0,
+        100,
+      )
+    : 0;
+  const audioQueueEtaSeconds =
+    audioQueue && audioQueuePercent >= 1
+      ? ((Date.now() - audioQueue.startedAt) / 1000) * ((100 - audioQueuePercent) / audioQueuePercent)
+      : null;
+  const navAudioProgress = audioQueue
+    ? {
+        label: audioQueue.mode === "chapter" ? "Chapter audio" : "Book audio",
+        detail: `${audioQueue.completedParts}/${audioQueue.items.length} parts generated`,
+        percent: audioQueuePercent,
+        etaSeconds: audioQueueEtaSeconds,
+        current: currentQueueItem
+          ? `${formatChapterTitle(currentQueueItem.chapterTitle)}${audioQueue.items.length > 1 ? `, ${currentQueueItem.partTitle}` : ""}`
+          : "Finishing queue",
+      }
+    : preparingAudioQueue
+      ? {
+          label: "Audio queue",
+          detail: "Preparing parts",
+          percent: 0,
+          etaSeconds: null,
+          current: "Measuring chapter text",
+        }
+      : generatingAudio
+        ? {
+            label: "Part audio",
+            detail: "0/1 parts generated",
+            percent: audioGenerationPercent,
+            etaSeconds: null,
+            current: activePart?.title ?? "Current part",
+          }
+        : null;
   const audioGenerationStatus =
-    audioProgress && audioProgress.total > 0
+    audioQueue
+      ? `Generating audio, ${Math.round(audioQueuePercent)}%, ${audioQueue.completedParts} of ${audioQueue.items.length} parts complete`
+      : audioProgress && audioProgress.total > 0
       ? `Generating audio, ${audioGenerationPercent}%, ${audioProgress.completed} of ${audioProgress.total} paragraphs complete`
       : "Generating audio";
 
@@ -2267,6 +2490,7 @@ function ReaderView({
               <p className="truncate text-xs text-muted-foreground">{activeChapter?.title || chapter?.title || "Chapter"}</p>
             </div>
             <div className="flex items-center justify-end gap-2">
+              {navAudioProgress ? <AudioNavProgress progress={navAudioProgress} /> : null}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button variant={searchOpen ? "secondary" : "ghost"} size="icon" onClick={toggleSearch} aria-label="Search book">
@@ -2334,6 +2558,7 @@ function ReaderView({
                         className={cn("toc-item", item.chapter_index === chapterIndex && "active")}
                         type="button"
                         onClick={() => selectChapter(item.chapter_index, 0, item.start_block_index)}
+                        onContextMenu={(event) => openChapterContextMenu(item.chapter_index, item.title, event)}
                       >
                         <span className="toc-title">{formatChapterTitle(item.title)}</span>
                         {item.parts.length > 1 ? <span className="toc-count">{item.parts.length}</span> : null}
@@ -2386,8 +2611,8 @@ function ReaderView({
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
                           <Button size="sm" disabled={generatingAudio || loadingAudio || syncingAlignment} aria-label={generatingAudio ? audioGenerationStatus : undefined}>
-                            {generatingAudio ? <AudioGenerationRing percent={audioProgress?.percent ?? 0} /> : <AudioLinesIcon data-icon="inline-start" />}
-                            {generatingAudio ? `Generating ${audioGenerationPercent}%` : "Regenerate audio"}
+                            <AudioLinesIcon data-icon="inline-start" />
+                            {generatingAudio ? "Generating audio" : "Regenerate audio"}
                           </Button>
                         </AlertDialogTrigger>
                         <AlertDialogContent>
@@ -2412,8 +2637,8 @@ function ReaderView({
                         onClick={() => void generateCurrentPartAudio(false)}
                         aria-label={generatingAudio ? audioGenerationStatus : undefined}
                       >
-                        {generatingAudio ? <AudioGenerationRing percent={audioProgress?.percent ?? 0} /> : <AudioLinesIcon data-icon="inline-start" />}
-                        {generatingAudio ? `Generating ${audioGenerationPercent}%` : "Generate audio"}
+                        <AudioLinesIcon data-icon="inline-start" />
+                        {generatingAudio ? "Generating audio" : "Generate audio"}
                       </Button>
                     )}
                     {partAudio ? (
@@ -2502,6 +2727,14 @@ function ReaderView({
             saved={wordlistRoots.has(wordContextMenu.rootWord)}
             onLookup={lookupContextMenuWord}
             onToggleWordlist={toggleContextMenuWordlist}
+          />
+        ) : null}
+        {chapterContextMenu ? (
+          <ChapterContextMenu
+            menu={chapterContextMenu}
+            disabled={generatingAudio}
+            onGenerateChapter={() => void startAudioQueue(chapterContextMenu.chapterIndex, "chapter")}
+            onGenerateFromChapter={() => void startAudioQueue(chapterContextMenu.chapterIndex, "from-chapter")}
           />
         ) : null}
         {lookupDialog ? (
@@ -2631,6 +2864,71 @@ function WordContextMenu({
       <button type="button" onClick={onToggleWordlist}>
         {saved ? "Remove from word list" : "Add to word list"}
       </button>
+    </div>
+  );
+}
+
+function ChapterContextMenu({
+  menu,
+  disabled,
+  onGenerateChapter,
+  onGenerateFromChapter,
+}: {
+  menu: ChapterContextMenuState;
+  disabled: boolean;
+  onGenerateChapter: () => void;
+  onGenerateFromChapter: () => void;
+}) {
+  return (
+    <div
+      className="reader-context-menu chapter-context-menu"
+      style={{ left: menu.x, top: menu.y }}
+      onClick={(event) => event.stopPropagation()}
+      onMouseDown={(event) => event.stopPropagation()}
+      aria-label={`Audio actions for ${menu.title}`}
+    >
+      <button type="button" disabled={disabled} onClick={onGenerateChapter}>
+        Generate chapter audio
+      </button>
+      <button type="button" disabled={disabled} onClick={onGenerateFromChapter}>
+        Generate from this chapter
+      </button>
+    </div>
+  );
+}
+
+function AudioNavProgress({
+  progress,
+}: {
+  progress: {
+    label: string;
+    detail: string;
+    percent: number;
+    etaSeconds: number | null;
+    current: string;
+  };
+}) {
+  const percent = Math.round(clampNumber(progress.percent, 0, 100));
+  const eta = progress.etaSeconds ? formatDuration(progress.etaSeconds) : "";
+  return (
+    <div className="audio-nav-progress" aria-label={`${progress.label}, ${percent}% complete`}>
+      <div className="audio-nav-progress-main">
+        <span className="audio-nav-label">{progress.label}</span>
+        <span className="audio-nav-percent">{percent}%</span>
+      </div>
+      <Progress className="audio-nav-bar" value={percent} />
+      <div className="audio-nav-progress-meta">
+        <span>{progress.detail}</span>
+        {eta ? (
+          <span className="audio-nav-eta">
+            <TimerIcon aria-hidden="true" />
+            {eta} left
+          </span>
+        ) : null}
+      </div>
+      <span className="audio-nav-current" title={progress.current}>
+        {progress.current}
+      </span>
     </div>
   );
 }
@@ -3088,6 +3386,22 @@ function countWords(text: string) {
   return text.match(/[\p{L}\p{N}]+(?:['’.-][\p{L}\p{N}]+)*/gu)?.length ?? 0;
 }
 
+function chapterPartEffort(chapter: ChapterPayload, startBlockIndex: number, endBlockIndex: number) {
+  let characters = 0;
+  let paragraphCount = 0;
+  for (const block of chapter.blocks) {
+    if (block.kind !== "paragraph" || block.block_index < startBlockIndex || block.block_index > endBlockIndex) {
+      continue;
+    }
+    characters += block.text.trim().length;
+    paragraphCount += 1;
+  }
+  return {
+    characters: Math.max(1, characters),
+    paragraphCount,
+  };
+}
+
 function formatClock(seconds: number) {
   if (!Number.isFinite(seconds) || seconds <= 0) {
     return "0:00";
@@ -3096,6 +3410,24 @@ function formatClock(seconds: number) {
   const minutes = Math.floor(whole / 60);
   const remainingSeconds = whole % 60;
   return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
+}
+
+function formatDuration(seconds: number) {
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    return "";
+  }
+  const rounded = Math.ceil(seconds);
+  if (rounded < 60) {
+    return `${rounded}s`;
+  }
+  const minutes = Math.floor(rounded / 60);
+  const remainingSeconds = rounded % 60;
+  if (minutes < 60) {
+    return remainingSeconds > 0 ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`;
+  }
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
 }
 
 function clampNumber(value: number, min: number, max: number) {
