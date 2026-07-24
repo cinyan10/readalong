@@ -1871,9 +1871,7 @@ function ReaderView({
       (entry) =>
         entry.definition &&
         hasWordlistAiEnrichment(entry) &&
-        (entry.root_word === menu.rootWord ||
-          entry.root_word === menu.word.toLowerCase() ||
-          entry.original_word.toLowerCase() === menu.word.toLowerCase()),
+        isWordlistEntryAtToken(entry, bookId, menu.chapterIndex, menu.blockIndex, menu.tokenIndex),
     );
     setWordContextMenu(null);
     if (cachedEntry) {
@@ -1923,7 +1921,7 @@ function ReaderView({
           result: null,
         });
       });
-  }, [wordContextMenu, wordlistEntries]);
+  }, [bookId, wordContextMenu, wordlistEntries]);
 
   const openImage = useCallback((image: ReaderImage) => {
     setImageZoom(1);
@@ -3217,6 +3215,10 @@ function wordlistExactKey(entry: WordlistEntry) {
 
 function wordlistTokenKey(bookId: number, chapterIndex: number, blockIndex: number, tokenIndex: number) {
   return `${bookId}:${chapterIndex}:${blockIndex}:${tokenIndex}`;
+}
+
+function isWordlistEntryAtToken(entry: WordlistEntry, bookId: number, chapterIndex: number, blockIndex: number, tokenIndex: number) {
+  return wordlistExactKey(entry) === wordlistTokenKey(bookId, chapterIndex, blockIndex, tokenIndex);
 }
 
 function timedTokenKey(blockIndex: number, tokenIndex: number) {
