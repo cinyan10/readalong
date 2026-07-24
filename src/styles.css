@@ -740,6 +740,56 @@ svg {
   outline-offset: 0.45rem;
 }
 
+.marked-word-rail {
+  position: fixed;
+  top: 4.65rem;
+  right: 0.15rem;
+  bottom: 1rem;
+  z-index: 18;
+  width: 0.85rem;
+  pointer-events: none;
+}
+
+.marked-word-rail::before {
+  position: absolute;
+  top: 0;
+  right: 0.35rem;
+  bottom: 0;
+  width: 1px;
+  background: oklch(var(--border) / 0.68);
+  content: "";
+}
+
+.marked-word-marker {
+  position: absolute;
+  right: 0.08rem;
+  width: 0.62rem;
+  height: 0.18rem;
+  border: 0;
+  border-radius: 999px;
+  background: #fff200;
+  box-shadow:
+    0 0 0 1px oklch(var(--foreground) / 0.18),
+    0 1px 4px oklch(var(--foreground) / 0.18);
+  transform: translateY(-50%);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.marked-word-marker:hover,
+.marked-word-marker:focus-visible {
+  width: 0.9rem;
+  background: oklch(0.9 0.16 92);
+  outline: 2px solid oklch(var(--primary) / 0.5);
+  outline-offset: 2px;
+}
+
+.marked-word-marker.active {
+  width: 0.95rem;
+  height: 0.28rem;
+  background: oklch(var(--primary));
+}
+
 .image-dialog-backdrop {
   position: fixed;
   inset: 0;

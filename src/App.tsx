@@ -131,6 +131,14 @@ type ChapterFindRange = {
   active: boolean;
 };
 
+type MarkedWordLocation = {
+  key: string;
+  word: string;
+  blockIndex: number;
+  tokenIndex: number;
+  ratio: number;
+};
+
 type WordContextMenuState = {
   word: string;
   rootWord: string;
@@ -557,6 +565,7 @@ function ReaderView({
   const [dialogImage, setDialogImage] = useState<ReaderImage | null>(null);
   const [wordContextMenu, setWordContextMenu] = useState<WordContextMenuState | null>(null);
   const [lookupDialog, setLookupDialog] = useState<LookupDialogState | null>(null);
+  const [markedWordLocations, setMarkedWordLocations] = useState<MarkedWordLocation[]>([]);
   const [imageZoom, setImageZoom] = useState(1);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const wordPreviewAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -764,6 +773,66 @@ function ReaderView({
     return ranges;
   }, [activeChapterFindIndex, chapterFindMatches, chapterFindOpen]);
   const trimmedSearchQuery = searchQuery.trim();
+
+  useEffect(() => {
+    if (!reader || !chapter || !visibleBlocks.length || !wordlistExactKeys.size) {
+      setMarkedWordLocations([]);
+      return;
+    }
+
+    let cancelled = false;
+    let animationFrame = 0;
+
+    const measureMarkedWords = () => {
+      const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+      if (maxScroll <= 0) {
+        setMarkedWordLocations([]);
+        return;
+      }
+
+      const nextLocations: MarkedWordLocation[] = [];
+      for (const block of visibleBlocks) {
+        block.tokens.forEach((token, tokenIndex) => {
+          const exactKey = wordlistTokenKey(bookId, chapter.chapter_index, block.block_index, tokenIndex);
+          if (!wordlistExactKeys.has(exactKey)) {
+            return;
+          }
+
+          const key = timedTokenKey(block.block_index, tokenIndex);
+          const node = tokenRefs.current[key];
+          if (!node) {
+            return;
+          }
+
+          const top = node.getBoundingClientRect().top + window.scrollY;
+          nextLocations.push({
+            key,
+            word: token.text,
+            blockIndex: block.block_index,
+            tokenIndex,
+            ratio: clampNumber(top / maxScroll, 0, 1),
+          });
+        });
+      }
+
+      if (!cancelled) {
+        setMarkedWordLocations(nextLocations.sort((left, right) => left.ratio - right.ratio));
+      }
+    };
+
+    const scheduleMeasure = () => {
+      window.cancelAnimationFrame(animationFrame);
+      animationFrame = window.requestAnimationFrame(measureMarkedWords);
+    };
+
+    scheduleScrollRestore(scheduleMeasure);
+    window.addEventListener("resize", scheduleMeasure);
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(animationFrame);
+      window.removeEventListener("resize", scheduleMeasure);
+    };
+  }, [bookId, chapter, reader, visibleBlocks, wordlistExactKeys]);
 
   useEffect(() => {
     if (!searchOpen) {
@@ -1460,6 +1529,61 @@ function ReaderView({
     setPartIndex(bookmark.part_index);
     setChapterIndex(bookmark.chapter_index);
   }, [bookmark, chapter, chapterIndex, partIndex, restoreBookmark]);
+
+  const jumpToMarkedWord = useCallback((location: MarkedWordLocation) => {
+    const tokenElement = tokenRefs.current[location.key];
+    visibleBlockRef.current = location.blockIndex;
+    setActiveTokenKey(location.key);
+    if (tokenElement) {
+      tokenElement.scrollIntoView({ block: "center" });
+      return;
+    }
+    document.getElementById(blockDomId(location.blockIndex))?.scrollIntoView({ block: "center" });
+  }, []);
+
+  const moveMarkedWord = useCallback(
+    (direction: 1 | -1) => {
+      if (!markedWordLocations.length) {
+        return;
+      }
+
+      const activeIndex = activeTokenKey
+        ? markedWordLocations.findIndex((location) => location.key === activeTokenKey)
+        : -1;
+      if (activeIndex !== -1) {
+        const nextIndex = (activeIndex + direction + markedWordLocations.length) % markedWordLocations.length;
+        jumpToMarkedWord(markedWordLocations[nextIndex]);
+        return;
+      }
+
+      const scrollRatio = currentScrollRatio();
+      const nextIndex =
+        direction === 1
+          ? markedWordLocations.findIndex((location) => location.ratio > scrollRatio)
+          : findLastIndex(markedWordLocations, (location) => location.ratio < scrollRatio);
+      const fallbackIndex = direction === 1 ? 0 : markedWordLocations.length - 1;
+      jumpToMarkedWord(markedWordLocations[nextIndex === -1 ? fallbackIndex : nextIndex]);
+    },
+    [activeTokenKey, jumpToMarkedWord, markedWordLocations],
+  );
+
+  useEffect(() => {
+    const handleMarkedWordShortcut = (event: KeyboardEvent) => {
+      if (!event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || isEditableTarget(event.target)) {
+        return;
+      }
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        moveMarkedWord(1);
+      } else if (event.key === "ArrowUp") {
+        event.preventDefault();
+        moveMarkedWord(-1);
+      }
+    };
+
+    window.addEventListener("keydown", handleMarkedWordShortcut);
+    return () => window.removeEventListener("keydown", handleMarkedWordShortcut);
+  }, [moveMarkedWord]);
 
   const saveCurrentBookmark = useCallback(() => {
     if (!reader || !chapter || !activeTokenKey) {
@@ -2364,6 +2488,11 @@ function ReaderView({
             )}
           </article>
         </div>
+        <MarkedWordScrollRail
+          locations={markedWordLocations}
+          activeKey={activeTokenKey}
+          onSelect={jumpToMarkedWord}
+        />
         <audio ref={audioRef} preload="metadata" className="hidden" />
         <audio ref={wordPreviewAudioRef} preload="metadata" className="hidden" />
         <audio ref={dictionaryAudioRef} preload="metadata" className="hidden" />
@@ -2410,6 +2539,36 @@ function ReaderView({
         ) : null}
       </main>
     </TooltipProvider>
+  );
+}
+
+function MarkedWordScrollRail({
+  locations,
+  activeKey,
+  onSelect,
+}: {
+  locations: MarkedWordLocation[];
+  activeKey: string | null;
+  onSelect: (location: MarkedWordLocation) => void;
+}) {
+  if (!locations.length) {
+    return null;
+  }
+
+  return (
+    <nav className="marked-word-rail" aria-label="Marked word locations">
+      {locations.map((location, index) => (
+        <button
+          key={`${location.key}-${index}`}
+          className={cn("marked-word-marker", activeKey === location.key && "active")}
+          type="button"
+          style={{ top: `${location.ratio * 100}%` }}
+          onClick={() => onSelect(location)}
+          aria-label={`Go to marked word ${location.word}`}
+          title={location.word}
+        />
+      ))}
+    </nav>
   );
 }
 
@@ -2944,6 +3103,22 @@ function clampNumber(value: number, min: number, max: number) {
     return min;
   }
   return Math.max(min, Math.min(max, value));
+}
+
+function findLastIndex<T>(items: T[], predicate: (item: T) => boolean) {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    if (predicate(items[index])) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function isEditableTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  return Boolean(target.closest("input, textarea, select, [contenteditable='true']"));
 }
 
 function currentScrollRatio() {
