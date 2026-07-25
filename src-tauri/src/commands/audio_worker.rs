@@ -427,6 +427,12 @@ fn tts_pronunciation_text(text: &str) -> String {
     let mut index = 0;
 
     while index < chars.len() {
+        if let Some((replacement, consumed)) = vocalization_pronunciation(&chars, index) {
+            out.push_str(&replacement);
+            index += consumed;
+            continue;
+        }
+
         if index + 2 < chars.len()
             && chars[index].is_ascii_alphabetic()
             && chars[index + 1] == '-'
@@ -446,6 +452,68 @@ fn tts_pronunciation_text(text: &str) -> String {
     }
 
     out
+}
+
+fn vocalization_pronunciation(chars: &[char], index: usize) -> Option<(String, usize)> {
+    if !is_stutter_boundary(chars.get(index.wrapping_sub(1)).copied(), index) {
+        return None;
+    }
+
+    let mut word_start = index;
+    let mut uppercase_like = chars[index].is_ascii_uppercase();
+    if index + 2 < chars.len()
+        && chars[index].is_ascii_alphabetic()
+        && chars[index + 1] == '-'
+        && chars[index].eq_ignore_ascii_case(&chars[index + 2])
+    {
+        word_start = index + 2;
+        uppercase_like = chars[index].is_ascii_uppercase();
+    }
+
+    let mut word_end = word_start;
+    while chars
+        .get(word_end)
+        .is_some_and(|character| character.is_ascii_alphabetic())
+    {
+        word_end += 1;
+    }
+    if word_end == word_start {
+        return None;
+    }
+    if chars
+        .get(word_end)
+        .is_some_and(|character| character.is_ascii_alphabetic())
+    {
+        return None;
+    }
+
+    let word = chars[word_start..word_end]
+        .iter()
+        .collect::<String>()
+        .to_ascii_lowercase();
+    let replacement = match word.as_str() {
+        "um" | "umm" | "ummm" => "umm",
+        "uh" | "uhh" | "uhhh" => "uhh",
+        "ah" | "ahh" | "ahhh" => "ahh",
+        "ngh" | "nghh" | "nghhh" | "nghhhh" => "ungh",
+        "hngh" | "hnghh" | "hnghhh" | "hnghhhh" => "hungh",
+        "unngh" | "unnngh" | "unnnngh" => "ungh",
+        _ => return None,
+    };
+
+    let consumed = word_end - index;
+    Some((capitalize_like(replacement, uppercase_like), consumed))
+}
+
+fn capitalize_like(value: &str, uppercase: bool) -> String {
+    if !uppercase {
+        return value.to_string();
+    }
+    let mut chars = value.chars();
+    let Some(first) = chars.next() else {
+        return String::new();
+    };
+    format!("{}{}", first.to_ascii_uppercase(), chars.as_str())
 }
 
 fn is_stutter_boundary(previous: Option<char>, index: usize) -> bool {
@@ -547,5 +615,22 @@ mod tests {
             "A-team and X-ray."
         );
         assert_eq!(tts_pronunciation_text("well-worn words"), "well-worn words");
+    }
+
+    #[test]
+    fn tts_text_phoneticizes_short_vocalizations() {
+        assert_eq!(tts_pronunciation_text("Um…uh…"), "Umm…uhh…");
+        assert_eq!(tts_pronunciation_text("U-um… I have no idea."), "Umm… I have no idea.");
+        assert_eq!(tts_pronunciation_text("“Uh…”"), "“Uhh…”");
+        assert_eq!(tts_pronunciation_text("Ngh, alas!"), "Ungh, alas!");
+        assert_eq!(tts_pronunciation_text("Hngh! This is my chance!"), "Hungh! This is my chance!");
+        assert_eq!(tts_pronunciation_text("but…unnngh"), "but…ungh");
+        assert_eq!(tts_pronunciation_text("Ah…ah-ha-ha"), "Ahh…ahh-ha-ha");
+    }
+
+    #[test]
+    fn tts_text_keeps_vocalization_strings_inside_words() {
+        assert_eq!(tts_pronunciation_text("human and unhinged"), "human and unhinged");
+        assert_eq!(tts_pronunciation_text("Yuigahama"), "Yuigahama");
     }
 }
