@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ThemeModeControl } from "@/components/ThemeModeControl";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatSavedAt, highlightContextWord, upsertWordlistEntry } from "./wordlist-utils";
 
@@ -68,7 +69,7 @@ export function WordlistView({
   return (
     <main className="min-h-screen bg-background text-foreground">
       <header className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur">
-        <div className="mx-auto grid h-16 w-full max-w-7xl grid-cols-[auto_1fr] items-center gap-3 px-6">
+        <div className="mx-auto grid h-16 w-full max-w-7xl grid-cols-[auto_1fr_auto] items-center gap-3 px-6">
           <Button variant="ghost" size="icon" onClick={onBack} aria-label="Back to library">
             <ChevronLeftIcon />
           </Button>
@@ -78,6 +79,7 @@ export function WordlistView({
               {entries.length ? `${entries.length} saved word${entries.length === 1 ? "" : "s"}` : "Saved vocabulary"}
             </p>
           </div>
+          <ThemeModeControl />
         </div>
       </header>
 
@@ -139,4 +141,3 @@ export function WordlistView({
     </main>
   );
 }
-

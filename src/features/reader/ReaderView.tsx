@@ -51,6 +51,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ThemeModeControl } from "@/components/ThemeModeControl";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -2109,6 +2110,7 @@ export function ReaderView({
             </div>
             <div className="flex items-center justify-end gap-2">
               {navAudioProgress ? <AudioNavProgress progress={navAudioProgress} /> : null}
+              <ThemeModeControl />
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button variant={searchOpen ? "secondary" : "ghost"} size="icon" onClick={toggleSearch} aria-label="Search book">

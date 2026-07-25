@@ -5,6 +5,7 @@ import type { BookSummary } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ThemeModeControl } from "@/components/ThemeModeControl";
 
 export function LibraryView({
   books,
@@ -35,6 +36,7 @@ export function LibraryView({
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <ThemeModeControl />
             <Button variant="secondary" onClick={onOpenWordlist}>
               <BookMarkedIcon data-icon="inline-start" />
               Word list
