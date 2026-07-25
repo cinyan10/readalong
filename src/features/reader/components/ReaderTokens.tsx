@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import type { ChapterPayload, TimedToken } from "@/types";
 import { cn } from "@/lib/utils";
 import type { ActiveSearchResult, ChapterFindRange, ColorMode } from "../reader-types";
@@ -16,8 +17,8 @@ export function ReaderTokens({
   wordlistRoots,
   wordlistExactKeys,
   timedTokensByKey,
-  onSeekToken,
-  onSeekRelativeToken,
+  onPlayToken,
+  onPreviewToken,
   onOpenWordContextMenu,
   onTokenRef,
 }: {
@@ -32,8 +33,8 @@ export function ReaderTokens({
   wordlistRoots: Set<string>;
   wordlistExactKeys: Set<string>;
   timedTokensByKey: Map<string, TimedToken>;
-  onSeekToken: (blockIndex: number, tokenIndex: number) => void;
-  onSeekRelativeToken: (blockIndex: number, tokenIndex: number) => void;
+  onPlayToken: (blockIndex: number, tokenIndex: number) => void;
+  onPreviewToken: (blockIndex: number, tokenIndex: number) => void;
   onOpenWordContextMenu: (
     token: ChapterPayload["blocks"][number]["tokens"][number],
     blockText: string,
@@ -45,6 +46,16 @@ export function ReaderTokens({
   ) => void;
   onTokenRef: (tokenKey: string, node: HTMLElement | null) => void;
 }) {
+  const singleClickTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (singleClickTimerRef.current !== null) {
+        window.clearTimeout(singleClickTimerRef.current);
+      }
+    };
+  }, []);
+
   if (!block.tokens.length) {
     return <>{block.text}</>;
   }
@@ -96,10 +107,24 @@ export function ReaderTokens({
             data-token-index={index}
             data-timed-token-key={syncKey}
             onClick={() => {
-              if (hasTiming) {
-                onSeekToken(block.block_index, index);
-              } else if (token.normalized_text) {
-                onSeekRelativeToken(block.block_index, index);
+              if (!token.normalized_text) {
+                return;
+              }
+              if (singleClickTimerRef.current !== null) {
+                window.clearTimeout(singleClickTimerRef.current);
+              }
+              singleClickTimerRef.current = window.setTimeout(() => {
+                singleClickTimerRef.current = null;
+                onPlayToken(block.block_index, index);
+              }, 220);
+            }}
+            onDoubleClick={() => {
+              if (singleClickTimerRef.current !== null) {
+                window.clearTimeout(singleClickTimerRef.current);
+                singleClickTimerRef.current = null;
+              }
+              if (token.normalized_text) {
+                onPreviewToken(block.block_index, index);
               }
             }}
             onContextMenu={(event) => {

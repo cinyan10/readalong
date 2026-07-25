@@ -1832,7 +1832,7 @@ export function ReaderView({
     setAudioState((current) => ({ ...current, currentTime: audio.currentTime }));
   }, [stopWordPreview]);
 
-  const seekToTimedToken = useCallback(
+  const previewTimedToken = useCallback(
     (blockIndex: number, tokenIndex: number) => {
       const audio = audioRef.current;
       if (!audio || !partAudio) {
@@ -1844,21 +1844,20 @@ export function ReaderView({
         return;
       }
       stopWordPreview();
+      audio.pause();
       audio.currentTime = Math.max(0, token.start_time);
       setAudioState((current) => ({ ...current, currentTime: audio.currentTime }));
       setActiveTokenKey(key);
 
-      if (audio.paused) {
-        const preview = wordPreviewAudioRef.current;
-        if (!preview) {
-          return;
-        }
-        preview.pause();
-        preview.src = audio.src || convertFileSrc(partAudio.audio_path);
-        wordPreviewEndTimeRef.current = Math.max(token.end_time, token.start_time + 0.15);
-        preview.currentTime = token.start_time;
-        void preview.play().catch((error) => toast.error(errorMessage(error, "Failed to play word preview.")));
+      const preview = wordPreviewAudioRef.current;
+      if (!preview) {
+        return;
       }
+      preview.pause();
+      preview.src = audio.src || convertFileSrc(partAudio.audio_path);
+      wordPreviewEndTimeRef.current = Math.max(token.end_time, token.start_time + 0.15);
+      preview.currentTime = token.start_time;
+      void preview.play().catch((error) => toast.error(errorMessage(error, "Failed to play word preview.")));
     },
     [partAudio, stopWordPreview, timedTokensByKey],
   );
@@ -1928,6 +1927,43 @@ export function ReaderView({
     [partAudio, stopWordPreview, timedTokensByKey, visibleBlocks],
   );
 
+  const playFromToken = useCallback(
+    (blockIndex: number, tokenIndex: number) => {
+      const audio = audioRef.current;
+      if (!audio || !partAudio) {
+        return;
+      }
+      const key = timedTokenKey(blockIndex, tokenIndex);
+      const token = timedTokensByKey.get(key);
+      if (token) {
+        stopWordPreview();
+        audio.currentTime = Math.max(0, token.start_time);
+        setAudioState((current) => ({ ...current, currentTime: audio.currentTime }));
+        setActiveTokenKey(key);
+      } else {
+        seekToRelativeToken(blockIndex, tokenIndex);
+      }
+      void audio.play().catch((error) => toast.error(errorMessage(error, "Failed to play audio.")));
+    },
+    [partAudio, seekToRelativeToken, stopWordPreview, timedTokensByKey],
+  );
+
+  const previewToken = useCallback(
+    (blockIndex: number, tokenIndex: number) => {
+      const key = timedTokenKey(blockIndex, tokenIndex);
+      if (timedTokensByKey.has(key)) {
+        previewTimedToken(blockIndex, tokenIndex);
+        return;
+      }
+      const audio = audioRef.current;
+      if (audio) {
+        audio.pause();
+      }
+      seekToRelativeToken(blockIndex, tokenIndex);
+    },
+    [previewTimedToken, seekToRelativeToken, timedTokensByKey],
+  );
+
   useEffect(() => {
     const seekSelectedWord = (event: KeyboardEvent | MouseEvent) => {
       let mouseTokenElement: HTMLElement | null = null;
@@ -1973,11 +2009,7 @@ export function ReaderView({
         return;
       }
       lastSelectionSeekKeyRef.current = seekKey;
-      if (timedTokensByKey.has(key)) {
-        seekToTimedToken(blockIndex, tokenIndex);
-        return;
-      }
-      seekToRelativeToken(blockIndex, tokenIndex);
+      setActiveTokenKey(key);
     };
 
     document.addEventListener("mouseup", seekSelectedWord);
@@ -1986,7 +2018,7 @@ export function ReaderView({
       document.removeEventListener("mouseup", seekSelectedWord);
       document.removeEventListener("keyup", seekSelectedWord);
     };
-  }, [seekToRelativeToken, seekToTimedToken, timedTokensByKey]);
+  }, []);
 
   const audioGenerationPercent = Math.round(audioProgress?.percent ?? 0);
   const queuePartPercent =
@@ -2277,8 +2309,8 @@ export function ReaderView({
                           wordlistRoots={wordlistRoots}
                           wordlistExactKeys={wordlistExactKeys}
                           timedTokensByKey={timedTokensByKey}
-                          onSeekToken={seekToTimedToken}
-                          onSeekRelativeToken={seekToRelativeToken}
+                          onPlayToken={playFromToken}
+                          onPreviewToken={previewToken}
                           onOpenWordContextMenu={openWordContextMenu}
                           onTokenRef={(tokenKey, node) => {
                             tokenRefs.current[tokenKey] = node;
