@@ -2353,8 +2353,17 @@ function ReaderView({
 
   useEffect(() => {
     const seekSelectedWord = (event: KeyboardEvent | MouseEvent) => {
-      if (event instanceof MouseEvent && event.button !== 0) {
-        return;
+      let mouseTokenElement: HTMLElement | null = null;
+      if (event instanceof MouseEvent) {
+        if (event.button !== 0) {
+          return;
+        }
+        const target = event.target;
+        mouseTokenElement = target instanceof Element ? target.closest<HTMLElement>("[data-timed-token-key]") : null;
+        if (!mouseTokenElement) {
+          lastSelectionSeekKeyRef.current = "";
+          return;
+        }
       }
       if (Date.now() - lastContextMenuAtRef.current < 500) {
         return;
@@ -2372,7 +2381,7 @@ function ReaderView({
       const selectedNode = selection.anchorNode;
       const selectedElement =
         selectedNode instanceof HTMLElement ? selectedNode : selectedNode?.parentElement ?? null;
-      const tokenElement = selectedElement?.closest<HTMLElement>("[data-timed-token-key]");
+      const tokenElement = mouseTokenElement ?? selectedElement?.closest<HTMLElement>("[data-timed-token-key]");
       if (!tokenElement || tokenElement.textContent?.trim() !== text) {
         return;
       }
