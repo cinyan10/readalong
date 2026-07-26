@@ -8,6 +8,7 @@ import type {
   ImportSummary,
   PartAlignmentPayload,
   PartAudioPayload,
+  ReaderHighlight,
   ReaderPayload,
   ReadingBookmark,
   WordlistEntry,
@@ -102,6 +103,34 @@ export function addWordlistEntry(input: AddWordlistEntryInput) {
 
 export function deleteWordlistEntry(rootWord: string) {
   return invoke<boolean>("delete_wordlist_entry", { rootWord });
+}
+
+export function listBookHighlights(bookId: number) {
+  return invoke<ReaderHighlight[]>("list_book_highlights", { bookId });
+}
+
+export type ToggleHighlightInput = {
+  bookId: number;
+  chapterIndex: number;
+  blockIndex: number;
+  startTokenIndex: number;
+  endTokenIndex: number;
+  startOffset: number;
+  endOffset: number;
+  text: string;
+};
+
+export function toggleHighlight(input: ToggleHighlightInput) {
+  return invoke<ReaderHighlight | null>("toggle_highlight", {
+    bookId: input.bookId,
+    chapterIndex: input.chapterIndex,
+    blockIndex: input.blockIndex,
+    startTokenIndex: input.startTokenIndex,
+    endTokenIndex: input.endTokenIndex,
+    startOffset: input.startOffset,
+    endOffset: input.endOffset,
+    text: input.text,
+  });
 }
 
 export function getPartAudio(bookId: number, chapterIndex: number, partIndex: number) {

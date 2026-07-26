@@ -20,12 +20,15 @@ import {
   getPartAudio,
   getReader,
   listWordlistEntries,
+  listBookHighlights,
   lookupWord,
   saveBookmark,
   saveProgress,
   searchBook,
   syncPartAlignment,
+  toggleHighlight,
   type SaveProgressInput,
+  type ToggleHighlightInput,
 } from "@/lib/api";
 import { errorMessage } from "@/lib/errors";
 import type {
@@ -33,6 +36,7 @@ import type {
   ChapterPayload,
   PartAlignmentPayload,
   PartAudioPayload,
+  ReaderHighlight,
   ReaderPayload,
   ReadingBookmark,
   TimedToken,
@@ -68,6 +72,7 @@ import { ReaderFigure } from "./components/ReaderFigure";
 import { ReaderSkeleton } from "./components/ReaderSkeleton";
 import { ReaderTokens } from "./components/ReaderTokens";
 import { SearchPanel } from "./components/SearchPanel";
+import { SelectionContextMenu } from "./components/SelectionContextMenu";
 import { WordContextMenu } from "./components/WordContextMenu";
 import type {
   ActiveSearchResult,
@@ -77,11 +82,13 @@ import type {
   ChapterContextMenuState,
   ChapterFindRange,
   ColorMode,
+  HighlightRangeInput,
   LookupDialogState,
   MarkedWordLocation,
   PendingRestore,
   ReaderImage,
   SaveProgressOptions,
+  SelectionContextMenuState,
   WordContextMenuState,
 } from "./reader-types";
 import {
@@ -142,6 +149,7 @@ export function ReaderView({
   const [audioProgress, setAudioProgress] = useState<AudioGenerationProgress | null>(null);
   const [audioState, setAudioState] = useState({ currentTime: 0, duration: 0, playing: false });
   const [wordlistEntries, setWordlistEntries] = useState<WordlistEntry[]>([]);
+  const [highlights, setHighlights] = useState<ReaderHighlight[]>([]);
   const [colorMode, setColorMode] = useState<ColorMode>(() => storedColorMode());
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -154,6 +162,7 @@ export function ReaderView({
   const [chapterFindScrollRequest, setChapterFindScrollRequest] = useState(0);
   const [dialogImage, setDialogImage] = useState<ReaderImage | null>(null);
   const [wordContextMenu, setWordContextMenu] = useState<WordContextMenuState | null>(null);
+  const [selectionContextMenu, setSelectionContextMenu] = useState<SelectionContextMenuState | null>(null);
   const [chapterContextMenu, setChapterContextMenu] = useState<ChapterContextMenuState | null>(null);
   const [lookupDialog, setLookupDialog] = useState<LookupDialogState | null>(null);
   const [markedWordLocations, setMarkedWordLocations] = useState<MarkedWordLocation[]>([]);
@@ -279,6 +288,24 @@ export function ReaderView({
   }, [bookId]);
 
   useEffect(() => {
+    let cancelled = false;
+    void listBookHighlights(bookId)
+      .then((entries) => {
+        if (!cancelled) {
+          setHighlights(entries);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setHighlights([]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [bookId]);
+
+  useEffect(() => {
     let unlisten: (() => void) | null = null;
     let cancelled = false;
     void listen<WordlistEntry>("wordlist_entry_enriched", (event) => {
@@ -330,6 +357,27 @@ export function ReaderView({
       (block) => block.block_index >= activePart.start_block_index && block.block_index <= activePart.end_block_index,
     );
   }, [activeChapter, activePart, chapter]);
+  const highlightsByBlock = useMemo(() => {
+    const ranges = new Map<number, ReaderHighlight[]>();
+    for (const highlight of highlights) {
+      if (highlight.chapter_index !== chapterIndex) {
+        continue;
+      }
+      const blockRanges = ranges.get(highlight.block_index) ?? [];
+      blockRanges.push(highlight);
+      ranges.set(highlight.block_index, blockRanges);
+    }
+    for (const blockRanges of ranges.values()) {
+      blockRanges.sort(
+        (left, right) =>
+          left.start_token_index - right.start_token_index ||
+          left.start_offset - right.start_offset ||
+          left.end_token_index - right.end_token_index ||
+          left.end_offset - right.end_offset,
+      );
+    }
+    return ranges;
+  }, [chapterIndex, highlights]);
   const partWordCount = useMemo(
     () => visibleBlocks.reduce((total, block) => total + countWords(block.text), 0),
     [visibleBlocks],
@@ -1591,6 +1639,143 @@ export function ReaderView({
     }
   }, [audioState.currentTime, audioState.duration, audioState.playing, partAlignment, saveCurrentProgress]);
 
+  const toggleReaderHighlight = useCallback(
+    (range: HighlightRangeInput) => {
+      const input: ToggleHighlightInput = {
+        bookId,
+        chapterIndex: range.chapterIndex,
+        blockIndex: range.blockIndex,
+        startTokenIndex: range.startTokenIndex,
+        endTokenIndex: range.endTokenIndex,
+        startOffset: range.startOffset,
+        endOffset: range.endOffset,
+        text: range.text,
+      };
+      void toggleHighlight(input)
+        .then((highlight) => {
+          setHighlights((current) => {
+            const withoutExact = current.filter((entry) => !highlightMatchesInput(entry, input));
+            return highlight ? [...withoutExact, highlight] : withoutExact;
+          });
+          toast.success(highlight ? "Highlighted." : "Highlight removed.");
+        })
+        .catch((error) => toast.error(errorMessage(error, "Failed to update highlight.")));
+    },
+    [bookId],
+  );
+
+  const highlightContextMenuWord = useCallback(() => {
+    if (!wordContextMenu) {
+      return;
+    }
+    const menu = wordContextMenu;
+    setWordContextMenu(null);
+    toggleReaderHighlight({
+      chapterIndex: menu.chapterIndex,
+      blockIndex: menu.blockIndex,
+      startTokenIndex: menu.tokenIndex,
+      endTokenIndex: menu.tokenIndex,
+      startOffset: 0,
+      endOffset: menu.word.length,
+      text: menu.word,
+    });
+  }, [toggleReaderHighlight, wordContextMenu]);
+
+  const highlightSelectionContextMenu = useCallback(() => {
+    if (!selectionContextMenu) {
+      return;
+    }
+    const menu = selectionContextMenu;
+    setSelectionContextMenu(null);
+    toggleReaderHighlight(menu);
+    window.getSelection()?.removeAllRanges();
+  }, [selectionContextMenu, toggleReaderHighlight]);
+
+  const saveTokenToWordlist = useCallback(
+    (
+      token: ChapterPayload["blocks"][number]["tokens"][number],
+      blockText: string,
+      blockIndex: number,
+      tokenIndex: number,
+    ) => {
+      if (!token.normalized_text) {
+        return;
+      }
+      const rootWord = token.root_text || token.normalized_text;
+      if (wordlistRoots.has(rootWord)) {
+        toast.success("Already in wordlist.");
+        return;
+      }
+      void addWordlistEntry({
+        bookId,
+        chapterIndex,
+        blockIndex,
+        tokenIndex,
+        word: token.text,
+        rootWord,
+        context: blockText,
+        cefrLevel: token.cefr_level || "",
+      })
+        .then((entry) => {
+          setWordlistEntries((current) => upsertWordlistEntry(current, entry));
+          toast.success("Added to wordlist.", {
+            description: entry.definition ? undefined : "Looking up the definition in the background.",
+          });
+        })
+        .catch((error) => toast.error(errorMessage(error, "Failed to add word.")));
+    },
+    [bookId, chapterIndex, wordlistRoots],
+  );
+
+  const handleTokenAuxAction = useCallback(
+    (
+      action: "highlight" | "wordlist",
+      token: ChapterPayload["blocks"][number]["tokens"][number],
+      blockText: string,
+      blockIndex: number,
+      tokenIndex: number,
+    ) => {
+      const selection = window.getSelection();
+      const selectedText = selection?.toString().trim() ?? "";
+      const selectedRange =
+        selection && !selection.isCollapsed && selection.rangeCount === 1 && selectedText
+          ? selectionHighlightRange(selection, chapterIndex)
+          : null;
+      if (action === "wordlist") {
+        const selectedToken =
+          selectedRange && !/\s/.test(selectedText) && selectedRange.startTokenIndex === selectedRange.endTokenIndex
+            ? tokenFromHighlightRange(chapter, selectedRange)
+            : null;
+        if (selectedToken) {
+          saveTokenToWordlist(selectedToken.token, selectedToken.block.text, selectedToken.block.block_index, selectedToken.tokenIndex);
+          selection?.removeAllRanges();
+          return;
+        }
+        saveTokenToWordlist(token, blockText, blockIndex, tokenIndex);
+        return;
+      }
+      if (selectedRange) {
+        setSelectionContextMenu(null);
+        toggleReaderHighlight(selectedRange);
+        selection?.removeAllRanges();
+        return;
+      }
+      if (!token.normalized_text) {
+        return;
+      }
+      toggleReaderHighlight({
+        chapterIndex,
+        blockIndex,
+        startTokenIndex: tokenIndex,
+        endTokenIndex: tokenIndex,
+        startOffset: 0,
+        endOffset: token.text.length,
+        text: token.text,
+      });
+    },
+    [chapter, chapterIndex, saveTokenToWordlist, toggleReaderHighlight],
+  );
+
   const toggleContextMenuWordlist = useCallback(() => {
     if (!wordContextMenu) {
       return;
@@ -1618,7 +1803,7 @@ export function ReaderView({
     })
       .then((entry) => {
         setWordlistEntries((current) => upsertWordlistEntry(current, entry));
-        toast.success("Added to word list.", {
+        toast.success("Added to wordlist.", {
           description: entry.definition ? undefined : "Looking up the definition in the background.",
         });
       })
@@ -1642,6 +1827,24 @@ export function ReaderView({
       window.removeEventListener("keydown", closeOnEscape);
     };
   }, [wordContextMenu]);
+
+  useEffect(() => {
+    if (!selectionContextMenu) {
+      return;
+    }
+    const close = () => setSelectionContextMenu(null);
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        close();
+      }
+    };
+    document.addEventListener("click", close);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("click", close);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [selectionContextMenu]);
 
   useEffect(() => {
     if (!chapterContextMenu) {
@@ -1701,8 +1904,10 @@ export function ReaderView({
       lastContextMenuAtRef.current = Date.now();
       const bounds = target.getBoundingClientRect();
       const menuWidth = 176;
-      const menuHeight = 92;
+      const menuHeight = 122;
       const dialogWidth = 380;
+      setSelectionContextMenu(null);
+      setChapterContextMenu(null);
       setWordContextMenu({
         word: token.text,
         rootWord: token.root_text || token.normalized_text,
@@ -1727,6 +1932,7 @@ export function ReaderView({
       const menuWidth = 220;
       const menuHeight = 96;
       setWordContextMenu(null);
+      setSelectionContextMenu(null);
       setChapterContextMenu({
         chapterIndex: targetChapterIndex,
         title,
@@ -1964,6 +2170,71 @@ export function ReaderView({
     },
     [previewTimedToken, seekToRelativeToken, timedTokensByKey],
   );
+
+  useEffect(() => {
+    const openSelectionMenuAt = (selection: Selection, x: number, y: number) => {
+      const range = selectionHighlightRange(selection, chapterIndex);
+      if (!range) {
+        setSelectionContextMenu(null);
+        toast.error("Select text inside one paragraph to highlight.");
+        return;
+      }
+      const menuWidth = 176;
+      const menuHeight = 48;
+      setWordContextMenu(null);
+      setChapterContextMenu(null);
+      setSelectionContextMenu({
+        ...range,
+        x: clampNumber(x, 12, Math.max(12, window.innerWidth - menuWidth - 12)),
+        y: clampNumber(y, 72, Math.max(72, window.innerHeight - menuHeight - 12)),
+      });
+    };
+
+    const openSelectionMenu = (event: MouseEvent) => {
+      if (event.button !== 0) {
+        return;
+      }
+      const target = event.target;
+      if (target instanceof Element && target.closest(".reader-context-menu, .lookup-dialog")) {
+        return;
+      }
+      if (!(target instanceof Element) || !target.closest(".reader-text")) {
+        return;
+      }
+      const selection = window.getSelection();
+      if (!selection || selection.isCollapsed || selection.rangeCount !== 1) {
+        return;
+      }
+      const text = selection.toString().trim();
+      if (!text || (!/\s/.test(text) && selection.toString() === text)) {
+        return;
+      }
+      const bounds = selection.getRangeAt(0).getBoundingClientRect();
+      openSelectionMenuAt(selection, bounds.left + bounds.width / 2, bounds.bottom + 8);
+    };
+
+    const openSelectionContextMenu = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element) || !target.closest(".reader-text")) {
+        return;
+      }
+      const selection = window.getSelection();
+      const text = selection?.toString().trim() ?? "";
+      if (!selection || selection.isCollapsed || selection.rangeCount !== 1 || !/\s/.test(text)) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      openSelectionMenuAt(selection, event.clientX, event.clientY);
+    };
+
+    document.addEventListener("mouseup", openSelectionMenu);
+    document.addEventListener("contextmenu", openSelectionContextMenu, true);
+    return () => {
+      document.removeEventListener("mouseup", openSelectionMenu);
+      document.removeEventListener("contextmenu", openSelectionContextMenu, true);
+    };
+  }, [chapterIndex]);
 
   useEffect(() => {
     const seekSelectedWord = (event: KeyboardEvent | MouseEvent) => {
@@ -2310,10 +2581,12 @@ export function ReaderView({
                           chapterFindRanges={chapterFindRangesByBlock.get(block.block_index) ?? []}
                           wordlistRoots={wordlistRoots}
                           wordlistExactKeys={wordlistExactKeys}
+                          highlights={highlightsByBlock.get(block.block_index) ?? []}
                           timedTokensByKey={timedTokensByKey}
                           onPlayToken={playFromToken}
                           onPreviewToken={previewToken}
                           onOpenWordContextMenu={openWordContextMenu}
+                          onTokenAuxAction={handleTokenAuxAction}
                           onTokenRef={(tokenKey, node) => {
                             tokenRefs.current[tokenKey] = node;
                           }}
@@ -2345,8 +2618,15 @@ export function ReaderView({
           <WordContextMenu
             menu={wordContextMenu}
             saved={wordlistRoots.has(wordContextMenu.rootWord)}
+            onHighlight={highlightContextMenuWord}
             onLookup={lookupContextMenuWord}
             onToggleWordlist={toggleContextMenuWordlist}
+          />
+        ) : null}
+        {selectionContextMenu ? (
+          <SelectionContextMenu
+            menu={selectionContextMenu}
+            onHighlight={highlightSelectionContextMenu}
           />
         ) : null}
         {chapterContextMenu ? (
@@ -2393,4 +2673,141 @@ export function ReaderView({
       </main>
     </TooltipProvider>
   );
+}
+
+function highlightMatchesInput(highlight: ReaderHighlight, input: ToggleHighlightInput) {
+  return (
+    highlight.book_id === input.bookId &&
+    highlight.chapter_index === input.chapterIndex &&
+    highlight.block_index === input.blockIndex &&
+    highlight.start_token_index === input.startTokenIndex &&
+    highlight.end_token_index === input.endTokenIndex &&
+    highlight.start_offset === input.startOffset &&
+    highlight.end_offset === input.endOffset
+  );
+}
+
+function tokenFromHighlightRange(chapter: ChapterPayload | null, range: HighlightRangeInput) {
+  if (!chapter) {
+    return null;
+  }
+  const block = chapter.blocks.find((item) => item.block_index === range.blockIndex);
+  const token = block?.tokens[range.startTokenIndex];
+  if (!block || !token?.normalized_text) {
+    return null;
+  }
+  return { block, token, tokenIndex: range.startTokenIndex };
+}
+
+function selectionHighlightRange(selection: Selection, chapterIndex: number): HighlightRangeInput | null {
+  if (selection.rangeCount !== 1) {
+    return null;
+  }
+  const range = selection.getRangeAt(0);
+  const selectedTokens = tokensIntersectingRange(range);
+  if (!selectedTokens.length) {
+    return null;
+  }
+  const startToken = selectedTokens[0];
+  const endToken = selectedTokens[selectedTokens.length - 1];
+  const startBlockIndex = numberFromDataset(startToken.dataset.blockIndex);
+  const endBlockIndex = numberFromDataset(endToken.dataset.blockIndex);
+  const startTokenIndex = numberFromDataset(startToken.dataset.tokenIndex);
+  const endTokenIndex = numberFromDataset(endToken.dataset.tokenIndex);
+  if (
+    startBlockIndex === null ||
+    endBlockIndex === null ||
+    startTokenIndex === null ||
+    endTokenIndex === null ||
+      startBlockIndex !== endBlockIndex
+  ) {
+    return null;
+  }
+  const startOffset = startToken.contains(range.startContainer)
+    ? offsetWithinToken(startToken, range.startContainer, range.startOffset)
+    : 0;
+  const endOffset = endToken.contains(range.endContainer)
+    ? offsetWithinToken(endToken, range.endContainer, range.endOffset)
+    : endToken.textContent?.length ?? 0;
+  if (startOffset === null || endOffset === null) {
+    return null;
+  }
+  const sameToken = startTokenIndex === endTokenIndex;
+  if (sameToken && endOffset <= startOffset) {
+    return null;
+  }
+  if (!sameToken && endTokenIndex < startTokenIndex) {
+    return null;
+  }
+  const text = selection.toString().trim();
+  if (!text) {
+    return null;
+  }
+  return {
+    chapterIndex,
+    blockIndex: startBlockIndex,
+    startTokenIndex,
+    endTokenIndex,
+    startOffset,
+    endOffset,
+    text,
+  };
+}
+
+function tokensIntersectingRange(range: Range) {
+  const ancestor =
+    range.commonAncestorContainer instanceof HTMLElement
+      ? range.commonAncestorContainer
+      : range.commonAncestorContainer.parentElement;
+  if (!ancestor) {
+    return [];
+  }
+  const rootBlock = ancestor.closest<HTMLElement>("[data-reader-block]");
+  const blocks = rootBlock
+    ? [rootBlock]
+    : Array.from((ancestor.closest(".reader-text") ?? ancestor).querySelectorAll<HTMLElement>("[data-reader-block]")).filter(
+        (block) => nodeIntersectsRange(range, block),
+      );
+  const candidates = blocks.flatMap((block) => [
+    ...(block.matches("[data-timed-token-key]") ? [block] : []),
+    ...Array.from(block.querySelectorAll<HTMLElement>("[data-timed-token-key]")),
+  ]);
+  if (!candidates.length && ancestor.matches("[data-timed-token-key]")) {
+    candidates.push(ancestor);
+  }
+  return candidates.filter((token) => {
+    return nodeIntersectsRange(range, token);
+  });
+}
+
+function nodeIntersectsRange(range: Range, node: Node) {
+  try {
+    return range.intersectsNode(node);
+  } catch {
+    return false;
+  }
+}
+
+function offsetWithinToken(tokenElement: HTMLElement, container: Node, offset: number) {
+  if (!tokenElement.contains(container)) {
+    return null;
+  }
+  const range = document.createRange();
+  try {
+    range.selectNodeContents(tokenElement);
+    range.setEnd(container, offset);
+    return range.toString().length;
+  } catch {
+    return null;
+  } finally {
+    range.detach();
+  }
+}
+
+function numberFromDataset(value: string | undefined) {
+  if (value === undefined) {
+    return null;
+  }
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
 }

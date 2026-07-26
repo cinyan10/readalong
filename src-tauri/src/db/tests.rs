@@ -325,6 +325,30 @@ mod tests {
     }
 
     #[test]
+    fn toggles_reader_highlight_range() {
+        let connection = frequency_test_connection();
+
+        let created = toggle_highlight(&connection, 1, 1, 2, 1, 3, 0, 8, "wugalpha wugalpha")
+            .expect("highlight")
+            .expect("created");
+        let highlights = list_book_highlights(&connection, 1).expect("highlights");
+
+        assert_eq!(highlights.len(), 1);
+        assert_eq!(created.text, "wugalpha wugalpha");
+        assert_eq!(highlights[0].start_token_index, 1);
+        assert_eq!(highlights[0].end_token_index, 3);
+        assert_eq!(highlights[0].end_offset, 8);
+
+        let removed = toggle_highlight(&connection, 1, 1, 2, 1, 3, 0, 8, "wugalpha wugalpha")
+            .expect("toggle");
+
+        assert!(removed.is_none());
+        assert!(list_book_highlights(&connection, 1)
+            .expect("highlights")
+            .is_empty());
+    }
+
+    #[test]
     fn wordlist_lookup_error_keeps_saved_entry() {
         let connection = frequency_test_connection();
         let entry =

@@ -13,7 +13,7 @@ use crate::cefr;
 use crate::db::{self, GeneratedAudioParagraph, GeneratedPartAudio, ImportOutcome};
 use crate::models::{
     BookSummary, ChapterPayload, ImportFailure, ImportSummary, PartAlignmentPayload,
-    PartAudioPayload, ReaderPayload, ReadingBookmark, WordlistEntry,
+    PartAudioPayload, ReaderHighlight, ReaderPayload, ReadingBookmark, WordlistEntry,
 };
 use crate::AppState;
 
@@ -24,6 +24,7 @@ const TITLE_AUDIO_BLOCK_BASE: i64 = -1_000_000_000_000;
 
 include!("library.rs");
 include!("wordlist.rs");
+include!("highlights.rs");
 include!("audio.rs");
 include!("progress.rs");
 include!("audio_worker.rs");

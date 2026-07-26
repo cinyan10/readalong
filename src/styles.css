@@ -1032,6 +1032,14 @@ svg {
   outline: 1px solid oklch(var(--mark-active) / 0.5);
 }
 
+.reader-highlight {
+  background: oklch(var(--mark) / 0.92);
+  color: oklch(var(--mark-foreground));
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  outline: 1px solid oklch(var(--mark-active) / 0.36);
+}
+
 .reader-token.search-hit,
 .reader-token.search-hit[class*="level-"] {
   background: oklch(0.86 0.12 88 / 0.58);

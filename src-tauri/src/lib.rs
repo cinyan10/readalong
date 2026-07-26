@@ -41,6 +41,8 @@ pub fn run() {
             commands::list_book_wordlist_entries,
             commands::add_wordlist_entry,
             commands::delete_wordlist_entry,
+            commands::list_book_highlights,
+            commands::toggle_highlight,
             commands::get_part_audio,
             commands::get_part_alignment,
             commands::generate_part_audio,

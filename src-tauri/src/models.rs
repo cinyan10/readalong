@@ -134,6 +134,21 @@ pub struct WordlistEntry {
     pub updated_at: String,
 }
 
+#[derive(Clone, Debug, Serialize)]
+pub struct ReaderHighlight {
+    pub id: i64,
+    pub book_id: i64,
+    pub chapter_index: i64,
+    pub block_index: i64,
+    pub start_token_index: usize,
+    pub end_token_index: usize,
+    pub start_offset: usize,
+    pub end_offset: usize,
+    pub text: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
 #[derive(Debug, Serialize)]
 pub struct PartAudioPayload {
     pub book_id: i64,

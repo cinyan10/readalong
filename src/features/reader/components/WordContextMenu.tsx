@@ -3,11 +3,13 @@ import type { WordContextMenuState } from "../reader-types";
 export function WordContextMenu({
   menu,
   saved,
+  onHighlight,
   onLookup,
   onToggleWordlist,
 }: {
   menu: WordContextMenuState;
   saved: boolean;
+  onHighlight: () => void;
   onLookup: () => void;
   onToggleWordlist: () => void;
 }) {
@@ -18,13 +20,15 @@ export function WordContextMenu({
       onClick={(event) => event.stopPropagation()}
       onMouseDown={(event) => event.stopPropagation()}
     >
+      <button type="button" onClick={onHighlight}>
+        Highlight
+      </button>
       <button type="button" onClick={onLookup}>
-        Look up word
+        Look up
       </button>
       <button type="button" onClick={onToggleWordlist}>
-        {saved ? "Remove from word list" : "Add to word list"}
+        {saved ? "Remove from wordlist" : "Save to wordlist"}
       </button>
     </div>
   );
 }
-

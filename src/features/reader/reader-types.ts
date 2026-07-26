@@ -89,6 +89,21 @@ export type WordContextMenuState = {
   y: number;
 };
 
+export type HighlightRangeInput = {
+  chapterIndex: number;
+  blockIndex: number;
+  startTokenIndex: number;
+  endTokenIndex: number;
+  startOffset: number;
+  endOffset: number;
+  text: string;
+};
+
+export type SelectionContextMenuState = HighlightRangeInput & {
+  x: number;
+  y: number;
+};
+
 export type ChapterContextMenuState = {
   chapterIndex: number;
   title: string;

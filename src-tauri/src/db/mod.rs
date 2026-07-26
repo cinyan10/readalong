@@ -13,8 +13,8 @@ use crate::epub;
 use crate::epub::ExtractedBlockKind;
 use crate::models::{
     BookSearchResult, BookSummary, ChapterBlock, ChapterPartSummary, ChapterPayload,
-    ChapterSummary, PartAlignmentPayload, PartAudioPayload, ReaderPayload, ReadingBookmark,
-    ReadingProgress, WordlistEntry,
+    ChapterSummary, PartAlignmentPayload, PartAudioPayload, ReaderHighlight, ReaderPayload,
+    ReadingBookmark, ReadingProgress, WordlistEntry,
 };
 
 const SCHEMA: &str = r#"
@@ -164,6 +164,21 @@ CREATE TABLE IF NOT EXISTS wordlist_entries (
     UNIQUE(root_word)
 );
 
+CREATE TABLE IF NOT EXISTS reader_highlights (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+    chapter_index INTEGER NOT NULL,
+    block_index INTEGER NOT NULL,
+    start_token_index INTEGER NOT NULL,
+    end_token_index INTEGER NOT NULL,
+    start_offset INTEGER NOT NULL DEFAULT 0,
+    end_offset INTEGER NOT NULL DEFAULT 0,
+    text TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(book_id, chapter_index, block_index, start_token_index, end_token_index, start_offset, end_offset)
+);
+
 CREATE INDEX IF NOT EXISTS idx_books_title ON books(title);
 CREATE INDEX IF NOT EXISTS idx_book_chapters_book ON book_chapters(book_id, chapter_index);
 CREATE INDEX IF NOT EXISTS idx_chapter_blocks_book ON chapter_blocks(book_id, chapter_index, block_index);
@@ -172,6 +187,7 @@ CREATE INDEX IF NOT EXISTS idx_audio_paragraphs_part ON audio_paragraphs(book_id
 CREATE INDEX IF NOT EXISTS idx_book_word_frequencies_book ON book_word_frequencies(book_id);
 CREATE INDEX IF NOT EXISTS idx_wordlist_entries_book ON wordlist_entries(book_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_wordlist_entries_root ON wordlist_entries(root_word);
+CREATE INDEX IF NOT EXISTS idx_reader_highlights_book_chapter ON reader_highlights(book_id, chapter_index, block_index);
 "#;
 
 pub enum ImportOutcome {
@@ -314,6 +330,7 @@ fn migrate_wordlist_entries(connection: &Connection) -> Result<()> {
 include!("library.rs");
 include!("reader.rs");
 include!("wordlist.rs");
+include!("highlights.rs");
 include!("audio.rs");
 include!("progress.rs");
 include!("reader_structure.rs");

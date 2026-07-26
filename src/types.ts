@@ -164,6 +164,20 @@ export type WordlistEntry = {
   updated_at: string;
 };
 
+export type ReaderHighlight = {
+  id: number;
+  book_id: number;
+  chapter_index: number;
+  block_index: number;
+  start_token_index: number;
+  end_token_index: number;
+  start_offset: number;
+  end_offset: number;
+  text: string;
+  created_at: string;
+  updated_at: string;
+};
+
 export type PartAudioPayload = {
   book_id: number;
   chapter_index: number;
