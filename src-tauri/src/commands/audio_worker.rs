@@ -427,24 +427,16 @@ fn tts_pronunciation_text(text: &str) -> String {
     let mut index = 0;
 
     while index < chars.len() {
-        if let Some((replacement, consumed)) = vocalization_pronunciation(&chars, index) {
+        if let Some((replacement, consumed)) = stutter_pronunciation(&chars, index) {
             out.push_str(&replacement);
             index += consumed;
             continue;
         }
 
-        if index + 2 < chars.len()
-            && chars[index].is_ascii_alphabetic()
-            && chars[index + 1] == '-'
-            && chars[index].eq_ignore_ascii_case(&chars[index + 2])
-            && is_stutter_boundary(chars.get(index.wrapping_sub(1)).copied(), index)
-        {
-            if let Some(prefix) = stutter_pronunciation_prefix(chars[index]) {
-                out.push_str(&prefix);
-                out.push('-');
-                index += 2;
-                continue;
-            }
+        if let Some((replacement, consumed)) = vocalization_pronunciation(&chars, index) {
+            out.push_str(&replacement);
+            index += consumed;
+            continue;
         }
 
         out.push(chars[index]);
@@ -452,6 +444,56 @@ fn tts_pronunciation_text(text: &str) -> String {
     }
 
     out
+}
+
+fn stutter_pronunciation(chars: &[char], index: usize) -> Option<(String, usize)> {
+    if !is_stutter_boundary(chars.get(index.wrapping_sub(1)).copied(), index) {
+        return None;
+    }
+
+    let mut fragments = Vec::new();
+    let mut word_start = index;
+    loop {
+        let mut word_end = word_start;
+        while chars
+            .get(word_end)
+            .is_some_and(|character| character.is_ascii_alphabetic())
+        {
+            word_end += 1;
+        }
+        if word_end == word_start || chars.get(word_end) != Some(&'-') {
+            break;
+        }
+        fragments.push(chars[word_start..word_end].iter().collect::<String>());
+        word_start = word_end + 1;
+    }
+
+    if fragments.is_empty() {
+        return None;
+    }
+
+    let mut word_end = word_start;
+    while chars
+        .get(word_end)
+        .is_some_and(|character| character.is_ascii_alphabetic())
+    {
+        word_end += 1;
+    }
+    if word_end == word_start {
+        return None;
+    }
+
+    let word = chars[word_start..word_end].iter().collect::<String>();
+    if fragments.iter().any(|fragment| {
+        !word
+            .get(..fragment.len())
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case(fragment))
+            || (fragment.len() > 1 && fragment.len() >= word.len())
+    }) {
+        return None;
+    }
+
+    Some((word, word_end - index))
 }
 
 fn vocalization_pronunciation(chars: &[char], index: usize) -> Option<(String, usize)> {
@@ -520,37 +562,6 @@ fn is_stutter_boundary(previous: Option<char>, index: usize) -> bool {
     index == 0 || previous.is_none_or(|character| !character.is_ascii_alphabetic())
 }
 
-fn stutter_pronunciation_prefix(character: char) -> Option<String> {
-    let prefix = match character.to_ascii_lowercase() {
-        'b' => "buh",
-        'c' | 'k' | 'q' => "kuh",
-        'd' => "duh",
-        'f' => "fuh",
-        'g' => "guh",
-        'h' => "huh",
-        'j' => "juh",
-        'l' => "luh",
-        'm' => "muh",
-        'n' => "nuh",
-        'p' => "puh",
-        'r' => "ruh",
-        's' => "suh",
-        't' => "tuh",
-        'v' => "vuh",
-        'w' => "wuh",
-        'y' => "yuh",
-        'z' => "zuh",
-        _ => return None,
-    };
-    if character.is_ascii_uppercase() {
-        let mut chars = prefix.chars();
-        let first = chars.next()?.to_ascii_uppercase();
-        Some(format!("{first}{}", chars.as_str()))
-    } else {
-        Some(prefix.to_string())
-    }
-}
-
 fn path_to_string(path: PathBuf) -> String {
     path.to_string_lossy().into_owned()
 }
@@ -596,16 +607,20 @@ mod tests {
     }
 
     #[test]
-    fn tts_text_phoneticizes_single_letter_stutters() {
+    fn tts_text_removes_stuttered_prefixes() {
         assert_eq!(
             tts_pronunciation_text("L-look at this."),
-            "Luh-look at this."
+            "look at this."
         );
         assert_eq!(
             tts_pronunciation_text("\"W-wait,\" she said."),
-            "\"Wuh-wait,\" she said."
+            "\"wait,\" she said."
         );
-        assert_eq!(tts_pronunciation_text("I s-said no."), "I suh-said no.");
+        assert_eq!(tts_pronunciation_text("I s-said no."), "I said no.");
+        assert_eq!(tts_pronunciation_text("Wh-whoa…"), "whoa…");
+        assert_eq!(tts_pronunciation_text("H-Hachiman"), "Hachiman");
+        assert_eq!(tts_pronunciation_text("S-s-s-sorry!"), "sorry!");
+        assert_eq!(tts_pronunciation_text("I-I'll go."), "I'll go.");
     }
 
     #[test]
@@ -615,12 +630,14 @@ mod tests {
             "A-team and X-ray."
         );
         assert_eq!(tts_pronunciation_text("well-worn words"), "well-worn words");
+        assert_eq!(tts_pronunciation_text("Ha-ha-ha!"), "Ha-ha-ha!");
+        assert_eq!(tts_pronunciation_text("Heh-heh"), "Heh-heh");
     }
 
     #[test]
     fn tts_text_phoneticizes_short_vocalizations() {
         assert_eq!(tts_pronunciation_text("Um…uh…"), "Umm…uhh…");
-        assert_eq!(tts_pronunciation_text("U-um… I have no idea."), "Umm… I have no idea.");
+        assert_eq!(tts_pronunciation_text("U-um… I have no idea."), "um… I have no idea.");
         assert_eq!(tts_pronunciation_text("“Uh…”"), "“Uhh…”");
         assert_eq!(tts_pronunciation_text("Ngh, alas!"), "Ungh, alas!");
         assert_eq!(tts_pronunciation_text("Hngh! This is my chance!"), "Hungh! This is my chance!");
