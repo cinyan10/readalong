@@ -2253,6 +2253,14 @@ export function ReaderView({
   }, [chapterIndex]);
 
   useEffect(() => {
+    const isSelectionKeyboardEvent = (event: KeyboardEvent) =>
+      event.key === "Shift" ||
+      event.key === "Home" ||
+      event.key === "End" ||
+      event.key === "PageUp" ||
+      event.key === "PageDown" ||
+      event.key.startsWith("Arrow");
+
     const seekSelectedWord = (event: KeyboardEvent | MouseEvent) => {
       let mouseTokenElement: HTMLElement | null = null;
       if (event instanceof MouseEvent) {
@@ -2263,6 +2271,14 @@ export function ReaderView({
         mouseTokenElement = target instanceof Element ? target.closest<HTMLElement>("[data-timed-token-key]") : null;
         if (!mouseTokenElement) {
           lastSelectionSeekKeyRef.current = "";
+          return;
+        }
+      } else {
+        if (!isSelectionKeyboardEvent(event)) {
+          return;
+        }
+        const target = event.target;
+        if (!(target instanceof Element) || !target.closest(".reader-text")) {
           return;
         }
       }
