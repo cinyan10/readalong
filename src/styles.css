@@ -1034,7 +1034,6 @@ svg {
 
 .reader-highlight {
   background: oklch(var(--mark) / 0.92);
-  color: oklch(var(--mark-foreground));
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
   outline: 1px solid oklch(var(--mark-active) / 0.36);
