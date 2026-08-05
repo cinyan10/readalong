@@ -420,7 +420,7 @@ export function ReaderView({
   const trimmedSearchQuery = searchQuery.trim();
 
   useEffect(() => {
-    if (!reader || !chapter || !visibleBlocks.length || !wordlistExactKeys.size) {
+    if (!reader || !chapter || !visibleBlocks.length || (!wordlistRoots.size && !highlightsByBlock.size)) {
       setMarkedWordLocations([]);
       return;
     }
@@ -438,25 +438,41 @@ export function ReaderView({
       const nextLocations: MarkedWordLocation[] = [];
       for (const block of visibleBlocks) {
         block.tokens.forEach((token, tokenIndex) => {
-          const exactKey = wordlistTokenKey(bookId, chapter.chapter_index, block.block_index, tokenIndex);
-          if (!wordlistExactKeys.has(exactKey)) {
-            return;
-          }
-
           const key = timedTokenKey(block.block_index, tokenIndex);
           const node = tokenRefs.current[key];
-          if (!node) {
-            return;
+          if (node) {
+            const top = node.getBoundingClientRect().top + window.scrollY;
+            const exactKey = wordlistTokenKey(bookId, chapter.chapter_index, block.block_index, tokenIndex);
+            const isExactWordlist = wordlistExactKeys.has(exactKey);
+            const rootWord = token.root_text || token.normalized_text;
+            const isRepeatedWordlist = Boolean(rootWord && wordlistRoots.has(rootWord) && !isExactWordlist);
+            if (isExactWordlist || isRepeatedWordlist) {
+              nextLocations.push({
+                key,
+                word: token.text,
+                blockIndex: block.block_index,
+                tokenIndex,
+                ratio: clampNumber(top / maxScroll, 0, 1),
+                kind: isExactWordlist ? "wordlist" : "wordlist-repeat",
+              });
+            }
           }
 
-          const top = node.getBoundingClientRect().top + window.scrollY;
-          nextLocations.push({
-            key,
-            word: token.text,
-            blockIndex: block.block_index,
-            tokenIndex,
-            ratio: clampNumber(top / maxScroll, 0, 1),
-          });
+          const highlightRanges = highlightsByBlock.get(block.block_index) ?? [];
+          if (highlightRanges.some((highlight) => tokenIndex === highlight.start_token_index)) {
+            const highlight = highlightRanges.find((entry) => tokenIndex === entry.start_token_index);
+            if (highlight && node) {
+              const top = node.getBoundingClientRect().top + window.scrollY;
+              nextLocations.push({
+                key,
+                word: highlight.text,
+                blockIndex: block.block_index,
+                tokenIndex,
+                ratio: clampNumber(top / maxScroll, 0, 1),
+                kind: "highlight",
+              });
+            }
+          }
         });
       }
 
@@ -477,7 +493,7 @@ export function ReaderView({
       window.cancelAnimationFrame(animationFrame);
       window.removeEventListener("resize", scheduleMeasure);
     };
-  }, [bookId, chapter, reader, visibleBlocks, wordlistExactKeys]);
+  }, [bookId, chapter, highlightsByBlock, reader, visibleBlocks, wordlistExactKeys, wordlistRoots]);
 
   useEffect(() => {
     if (!searchOpen) {

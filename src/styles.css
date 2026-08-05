@@ -922,6 +922,15 @@ svg {
   background: oklch(var(--primary));
 }
 
+.marked-word-marker-wordlist-repeat {
+  background: oklch(0.56 0.12 242);
+}
+
+.marked-word-marker-highlight {
+  width: 0.72rem;
+  background: oklch(var(--mark-active));
+}
+
 .image-dialog-backdrop {
   position: fixed;
   inset: 0;

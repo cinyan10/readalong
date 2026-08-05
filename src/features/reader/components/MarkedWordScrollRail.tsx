@@ -19,15 +19,18 @@ export function MarkedWordScrollRail({
       {locations.map((location, index) => (
         <button
           key={`${location.key}-${index}`}
-          className={cn("marked-word-marker", activeKey === location.key && "active")}
+          className={cn(
+            "marked-word-marker",
+            `marked-word-marker-${location.kind}`,
+            activeKey === location.key && "active",
+          )}
           type="button"
           style={{ top: `${location.ratio * 100}%` }}
           onClick={() => onSelect(location)}
-          aria-label={`Go to marked word ${location.word}`}
+          aria-label={`Go to ${location.kind === "highlight" ? "highlight" : "marked word"} ${location.word}`}
           title={location.word}
         />
       ))}
     </nav>
   );
 }
-

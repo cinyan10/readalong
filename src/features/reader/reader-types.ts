@@ -73,6 +73,7 @@ export type MarkedWordLocation = {
   blockIndex: number;
   tokenIndex: number;
   ratio: number;
+  kind: "wordlist" | "wordlist-repeat" | "highlight";
 };
 
 export type WordContextMenuState = {
