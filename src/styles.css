@@ -1023,6 +1023,10 @@ svg {
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
   outline: 1px solid oklch(var(--primary) / 0.26);
+  text-decoration-line: underline;
+  text-decoration-color: oklch(var(--primary));
+  text-decoration-thickness: 0.12em;
+  text-underline-offset: 0.3em;
 }
 
 .reader-token.marked {
