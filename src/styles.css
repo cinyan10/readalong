@@ -926,6 +926,10 @@ svg {
   background: oklch(0.56 0.12 242);
 }
 
+.marked-word-marker-wordlist {
+  background: oklch(0.66 0.15 155);
+}
+
 .marked-word-marker-highlight {
   width: 0.72rem;
   background: oklch(var(--mark-active));
@@ -1012,11 +1016,20 @@ svg {
   background: oklch(var(--primary) / 0.1);
 }
 
-.reader-token.wordlisted-root {
-  background: oklch(0.74 0.08 190 / 0.24);
+.reader-wordlist-highlight {
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
-  outline: 1px solid oklch(0.56 0.07 190 / 0.2);
+  border-radius: 0.18em;
+}
+
+.reader-wordlist-highlight-original {
+  background: oklch(0.82 0.17 155 / 0.78);
+  outline: 1px solid oklch(0.66 0.15 155 / 0.45);
+}
+
+.reader-wordlist-highlight-repeat {
+  background: oklch(0.8 0.14 225 / 0.72);
+  outline: 1px solid oklch(0.62 0.13 225 / 0.42);
 }
 
 .reader-token.bookmarked {
@@ -1038,17 +1051,11 @@ svg {
   text-underline-offset: 0.3em;
 }
 
-.reader-token.marked {
-  background: oklch(var(--mark));
-  box-decoration-break: clone;
-  -webkit-box-decoration-break: clone;
-  outline: 1px solid oklch(var(--mark-active) / 0.5);
-}
-
 .reader-highlight {
   background: oklch(var(--mark) / 0.92);
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
+  border-radius: 0.18em;
   outline: 1px solid oklch(var(--mark-active) / 0.36);
 }
 
@@ -1399,12 +1406,6 @@ svg {
 
 .wordlist-error {
   color: oklch(var(--destructive));
-}
-
-.reader-token.active.marked,
-.reader-token.active.marked[class*="level-"] {
-  background: oklch(var(--primary) / 0.22);
-  outline: 1px solid oklch(var(--primary) / 0.34);
 }
 
 .reader-token.active.search-hit,

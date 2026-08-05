@@ -84,6 +84,11 @@ export function ReaderTokens({
         const rootWord = token.root_text || token.normalized_text;
         const isWordlistExact = wordlistExactKeys.has(exactKey);
         const isWordlistRoot = Boolean(rootWord && wordlistRoots.has(rootWord) && !isWordlistExact);
+        const wordlistHighlightClass = isWordlistExact
+          ? "reader-wordlist-highlight reader-wordlist-highlight-original"
+          : isWordlistRoot
+            ? "reader-wordlist-highlight reader-wordlist-highlight-repeat"
+            : undefined;
         const isBookmarked = bookmarkedTokenKey === syncKey;
         const tokenStart = tokenOffset;
         const tokenEnd = tokenStart + token.text.length;
@@ -101,8 +106,6 @@ export function ReaderTokens({
               "reader-token",
               colorLevel && `level-${colorLevel.toLowerCase()}`,
               token.normalized_text && "clickable",
-              isWordlistRoot && "wordlisted-root",
-              isWordlistExact && "marked",
               isBookmarked && "bookmarked",
               hasTiming && "synced",
               activeTokenKey === syncKey && "active",
@@ -156,7 +159,7 @@ export function ReaderTokens({
               }
             }}
           >
-            {renderHighlightedTokenText(token.text, index, highlights)}
+            {renderHighlightedTokenText(token.text, index, highlights, wordlistHighlightClass)}
           </span>
         );
       })}
@@ -164,7 +167,12 @@ export function ReaderTokens({
   );
 }
 
-function renderHighlightedTokenText(text: string, tokenIndex: number, highlights: ReaderHighlight[]) {
+function renderHighlightedTokenText(
+  text: string,
+  tokenIndex: number,
+  highlights: ReaderHighlight[],
+  wordlistHighlightClass?: string,
+) {
   const ranges = highlights
     .filter((highlight) => tokenIndex >= highlight.start_token_index && tokenIndex <= highlight.end_token_index)
     .map((highlight) => ({
@@ -178,8 +186,17 @@ function renderHighlightedTokenText(text: string, tokenIndex: number, highlights
     .filter((range) => range.end > range.start)
     .sort((left, right) => left.start - right.start || left.end - right.end);
 
+  const renderWordlistText = (value: string, key?: string) =>
+    wordlistHighlightClass ? (
+      <span key={key} className={wordlistHighlightClass}>
+        {value}
+      </span>
+    ) : (
+      value
+    );
+
   if (!ranges.length) {
-    return text;
+    return renderWordlistText(text);
   }
 
   const merged: { start: number; end: number }[] = [];
@@ -196,7 +213,7 @@ function renderHighlightedTokenText(text: string, tokenIndex: number, highlights
   let cursor = 0;
   merged.forEach((range, index) => {
     if (range.start > cursor) {
-      parts.push(text.slice(cursor, range.start));
+      parts.push(renderWordlistText(text.slice(cursor, range.start), `wordlist-${cursor}-${range.start}`));
     }
     parts.push(
       <span key={`${range.start}-${range.end}-${index}`} className="reader-highlight">
@@ -206,7 +223,7 @@ function renderHighlightedTokenText(text: string, tokenIndex: number, highlights
     cursor = range.end;
   });
   if (cursor < text.length) {
-    parts.push(text.slice(cursor));
+    parts.push(renderWordlistText(text.slice(cursor), `wordlist-${cursor}-${text.length}`));
   }
   return parts;
 }
