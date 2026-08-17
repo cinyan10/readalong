@@ -100,7 +100,6 @@ import {
   countWords,
   currentScrollRatio,
   findChapterMatches,
-  findLastIndex,
   findSavedPlayingToken,
   formatChapterTitle,
   formatDuration,
@@ -191,6 +190,7 @@ export function ReaderView({
   const lastSelectionSeekKeyRef = useRef("");
   const lastContextMenuAtRef = useRef(0);
   const lastChapterFindRevealKeyRef = useRef("");
+  const lastMarkedWordKeyRef = useRef<string | null>(null);
   const searchRequestRef = useRef(0);
   const lookupRequestRef = useRef(0);
   const audioQueueRunRef = useRef(0);
@@ -1200,6 +1200,7 @@ export function ReaderView({
   }, [bookmark, chapter, chapterIndex, partIndex, restoreBookmark]);
 
   const jumpToMarkedWord = useCallback((location: MarkedWordLocation) => {
+    lastMarkedWordKeyRef.current = location.key;
     const tokenElement = tokenRefs.current[location.key];
     visibleBlockRef.current = location.blockIndex;
     setActiveTokenKey(location.key);
@@ -1216,8 +1217,8 @@ export function ReaderView({
         return;
       }
 
-      const activeIndex = activeTokenKey
-        ? markedWordLocations.findIndex((location) => location.key === activeTokenKey)
+      const activeIndex = lastMarkedWordKeyRef.current
+        ? markedWordLocations.findIndex((location) => location.key === lastMarkedWordKeyRef.current)
         : -1;
       if (activeIndex !== -1) {
         const nextIndex = (activeIndex + direction + markedWordLocations.length) % markedWordLocations.length;
@@ -1225,15 +1226,9 @@ export function ReaderView({
         return;
       }
 
-      const scrollRatio = currentScrollRatio();
-      const nextIndex =
-        direction === 1
-          ? markedWordLocations.findIndex((location) => location.ratio > scrollRatio)
-          : findLastIndex(markedWordLocations, (location) => location.ratio < scrollRatio);
-      const fallbackIndex = direction === 1 ? 0 : markedWordLocations.length - 1;
-      jumpToMarkedWord(markedWordLocations[nextIndex === -1 ? fallbackIndex : nextIndex]);
+      jumpToMarkedWord(markedWordLocations[direction === 1 ? 0 : markedWordLocations.length - 1]);
     },
-    [activeTokenKey, jumpToMarkedWord, markedWordLocations],
+    [jumpToMarkedWord, markedWordLocations],
   );
 
   useEffect(() => {
