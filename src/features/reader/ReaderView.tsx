@@ -267,7 +267,7 @@ export function ReaderView({
     return () => {
       cancelled = true;
     };
-  }, [bookId, chapterIndex, reader]);
+  }, [bookId, chapterIndex, reader?.id]);
 
   useEffect(() => {
     let cancelled = false;
