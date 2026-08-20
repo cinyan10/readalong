@@ -23,6 +23,7 @@ import {
   listBookHighlights,
   lookupWord,
   saveBookmark,
+  completeAppExit,
   saveProgress,
   searchBook,
   syncPartAlignment,
@@ -120,15 +121,25 @@ import {
   wordlistExactKey,
   wordlistTokenKey,
 } from "@/features/wordlist/wordlist-utils";
+type ExitBookmarkLocation = {
+  chapterIndex: number;
+  partIndex: number;
+  blockIndex: number;
+  tokenIndex: number;
+  word: string;
+  rootWord: string;
+};
 
 export function ReaderView({
   bookId,
   initialChapterIndex,
   onBack,
+  registerLeaveRequestHandler,
 }: {
   bookId: number;
   initialChapterIndex?: number;
   onBack: () => void;
+  registerLeaveRequestHandler: (handler: () => void) => () => void;
 }) {
   const [reader, setReader] = useState<ReaderPayload | null>(null);
   const [chapter, setChapter] = useState<ChapterPayload | null>(null);
@@ -166,6 +177,9 @@ export function ReaderView({
   const [lookupDialog, setLookupDialog] = useState<LookupDialogState | null>(null);
   const [markedWordLocations, setMarkedWordLocations] = useState<MarkedWordLocation[]>([]);
   const [imageZoom, setImageZoom] = useState(1);
+  const [exitDialogOpen, setExitDialogOpen] = useState(false);
+  const [exitBookmarkLocation, setExitBookmarkLocation] = useState<ExitBookmarkLocation | null>(null);
+  const [savingExitBookmark, setSavingExitBookmark] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const wordPreviewAudioRef = useRef<HTMLAudioElement | null>(null);
   const dictionaryAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -1284,6 +1298,95 @@ export function ReaderView({
       .catch((error) => toast.error(errorMessage(error, "Failed to save bookmark.")));
   }, [activePart?.part_index, activeTokenKey, bookId, chapter, partIndex, reader]);
 
+  const currentExitBookmarkLocation = useCallback((): ExitBookmarkLocation | null => {
+    if (!chapter) {
+      return null;
+    }
+
+    const locationForToken = (blockIndex: number, tokenIndex: number): ExitBookmarkLocation | null => {
+      const block = chapter.blocks.find((item) => item.block_index === blockIndex);
+      const token = block?.tokens[tokenIndex];
+      if (!token?.normalized_text) {
+        return null;
+      }
+      const locationChapter = reader?.chapters.find(
+        (item) => blockIndex >= item.start_block_index && blockIndex <= item.end_block_index,
+      );
+      const locationPart = locationChapter?.parts.find(
+        (item) => blockIndex >= item.start_block_index && blockIndex <= item.end_block_index,
+      );
+      return {
+        chapterIndex: locationChapter?.chapter_index ?? chapter.chapter_index,
+        partIndex: locationPart?.part_index ?? activePart?.part_index ?? partIndex,
+        blockIndex,
+        tokenIndex,
+        word: token.text,
+        rootWord: token.root_text || token.normalized_text,
+      };
+    };
+
+    const activeToken = activeTimedTokenRef.current;
+    if (activeToken) {
+      const activeLocation = locationForToken(activeToken.block_index, activeToken.token_index);
+      if (activeLocation) {
+        return activeLocation;
+      }
+    }
+
+    const visibleBlockIndex = visibleBlockRef.current ?? activePart?.start_block_index;
+    const blocksByDistance = [...chapter.blocks].sort(
+      (left, right) =>
+        Math.abs(left.block_index - (visibleBlockIndex ?? left.block_index)) -
+        Math.abs(right.block_index - (visibleBlockIndex ?? right.block_index)),
+    );
+    for (const block of blocksByDistance) {
+      const tokenIndex = block.tokens.findIndex((token) => Boolean(token.normalized_text));
+      if (tokenIndex !== -1) {
+        return locationForToken(block.block_index, tokenIndex);
+      }
+    }
+    return null;
+  }, [activePart?.part_index, activePart?.start_block_index, chapter, partIndex, reader]);
+
+  const completeExit = useCallback(() => {
+    void completeAppExit().catch((error) => toast.error(errorMessage(error, "Failed to quit the app.")));
+  }, []);
+
+  const handleLeaveRequest = useCallback(() => {
+    if (exitDialogOpen) {
+      return;
+    }
+    const visibleBlockIndex = visibleBlockRef.current ?? activePart?.start_block_index;
+    const location = currentExitBookmarkLocation();
+    if (!bookmark || visibleBlockIndex === null || visibleBlockIndex === bookmark.block_index || !location) {
+      completeExit();
+      return;
+    }
+    setExitBookmarkLocation(location);
+    setExitDialogOpen(true);
+  }, [activePart?.start_block_index, bookmark, completeExit, currentExitBookmarkLocation, exitDialogOpen]);
+
+  useEffect(() => registerLeaveRequestHandler(handleLeaveRequest), [handleLeaveRequest, registerLeaveRequestHandler]);
+
+  const saveExitBookmark = useCallback(() => {
+    if (!reader || !chapter || !exitBookmarkLocation || savingExitBookmark) {
+      return;
+    }
+    setSavingExitBookmark(true);
+    void saveBookmark({
+      bookId,
+      ...exitBookmarkLocation,
+      scrollRatio: currentScrollRatio(),
+      progressPercent: readingProgressPercent(reader, chapter, exitBookmarkLocation.blockIndex),
+    })
+      .then((saved) => {
+        setReader((current) => (current ? { ...current, bookmark: saved } : current));
+        completeExit();
+      })
+      .catch((error) => toast.error(errorMessage(error, "Failed to save bookmark.")))
+      .finally(() => setSavingExitBookmark(false));
+  }, [bookId, chapter, completeExit, exitBookmarkLocation, reader, savingExitBookmark]);
+
   const toggleSearch = useCallback(() => {
     const nextOpen = !searchOpen;
     setSearchOpen(nextOpen);
@@ -2375,6 +2478,42 @@ export function ReaderView({
 
   return (
     <TooltipProvider>
+      <AlertDialog
+        open={exitDialogOpen}
+        onOpenChange={(open) => {
+          if (!open && !savingExitBookmark) {
+            setExitDialogOpen(false);
+            setExitBookmarkLocation(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Save bookmark before quitting?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You have moved away from your saved bookmark. Save your current reading location before quitting Readalong?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setExitDialogOpen(false);
+                setExitBookmarkLocation(null);
+              }}
+              disabled={savingExitBookmark}
+            >
+              Cancel
+            </Button>
+            <Button variant="outline" onClick={completeExit} disabled={savingExitBookmark}>
+              Quit Without Saving
+            </Button>
+            <Button onClick={saveExitBookmark} disabled={savingExitBookmark}>
+              {savingExitBookmark ? "Saving..." : "Save Bookmark"}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <main className="min-h-screen bg-reader text-foreground">
         <header className="sticky top-0 z-20 border-b bg-reader/95 backdrop-blur">
           <div className="grid h-16 grid-cols-[auto_1fr_auto] items-center gap-3 px-4">

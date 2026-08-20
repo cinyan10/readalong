@@ -7,18 +7,33 @@ mod models;
 
 use std::fs;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Mutex,
+};
 
 use rusqlite::Connection;
-use tauri::Manager;
+#[cfg(target_os = "macos")]
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::{Emitter, Manager, RunEvent, WindowEvent};
 
 pub struct AppState {
     data_dir: PathBuf,
     db: Mutex<Connection>,
 }
 
+pub struct ExitState {
+    approved: AtomicBool,
+}
+
+#[tauri::command]
+fn complete_app_exit(app: tauri::AppHandle, exit_state: tauri::State<'_, ExitState>) {
+    exit_state.approved.store(true, Ordering::SeqCst);
+    app.exit(0);
+}
+
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
@@ -28,8 +43,95 @@ pub fn run() {
                 data_dir,
                 db: Mutex::new(connection),
             });
+            app.manage(ExitState {
+                approved: AtomicBool::new(false),
+            });
             Ok(())
         })
+        .on_window_event(|window, event| {
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.emit("app-leave-requested", ());
+            }
+        });
+
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .menu(|app| {
+            let quit =
+                MenuItem::with_id(app, "request-quit", "Quit Readalong", true, Some("Cmd+Q"))?;
+            let app_menu = Submenu::with_items(
+                app,
+                "Readalong",
+                true,
+                &[
+                    &PredefinedMenuItem::about(app, None, None)?,
+                    &PredefinedMenuItem::separator(app)?,
+                    &PredefinedMenuItem::services(app, None)?,
+                    &PredefinedMenuItem::separator(app)?,
+                    &PredefinedMenuItem::hide(app, None)?,
+                    &PredefinedMenuItem::hide_others(app, None)?,
+                    &PredefinedMenuItem::separator(app)?,
+                    &quit,
+                ],
+            )?;
+            let file_menu = Submenu::with_items(
+                app,
+                "File",
+                true,
+                &[&PredefinedMenuItem::close_window(app, None)?],
+            )?;
+            let edit_menu = Submenu::with_items(
+                app,
+                "Edit",
+                true,
+                &[
+                    &PredefinedMenuItem::undo(app, None)?,
+                    &PredefinedMenuItem::redo(app, None)?,
+                    &PredefinedMenuItem::separator(app)?,
+                    &PredefinedMenuItem::cut(app, None)?,
+                    &PredefinedMenuItem::copy(app, None)?,
+                    &PredefinedMenuItem::paste(app, None)?,
+                    &PredefinedMenuItem::select_all(app, None)?,
+                ],
+            )?;
+            let view_menu = Submenu::with_items(
+                app,
+                "View",
+                true,
+                &[&PredefinedMenuItem::fullscreen(app, None)?],
+            )?;
+            let window_menu = Submenu::with_items(
+                app,
+                "Window",
+                true,
+                &[
+                    &PredefinedMenuItem::minimize(app, None)?,
+                    &PredefinedMenuItem::maximize(app, None)?,
+                    &PredefinedMenuItem::separator(app)?,
+                    &PredefinedMenuItem::close_window(app, None)?,
+                ],
+            )?;
+            let help_menu = Submenu::with_items(app, "Help", true, &[])?;
+            Menu::with_items(
+                app,
+                &[
+                    &app_menu,
+                    &file_menu,
+                    &edit_menu,
+                    &view_menu,
+                    &window_menu,
+                    &help_menu,
+                ],
+            )
+        })
+        .on_menu_event(|app, event| {
+            if event.id() == "request-quit" {
+                let _ = app.emit("app-leave-requested", ());
+            }
+        });
+
+    let app = builder
         .invoke_handler(tauri::generate_handler![
             commands::list_books,
             commands::import_books,
@@ -49,7 +151,19 @@ pub fn run() {
             commands::sync_part_alignment,
             commands::save_progress,
             commands::save_bookmark,
+            complete_app_exit,
         ])
-        .run(tauri::generate_context!())
+        .build(tauri::generate_context!())
         .expect("error while running Readalong");
+
+    app.run(|app, event| {
+        if let RunEvent::ExitRequested { api, .. } = event {
+            let exit_state = app.state::<ExitState>();
+            if exit_state.approved.swap(false, Ordering::SeqCst) {
+                return;
+            }
+            api.prevent_exit();
+            let _ = app.emit("app-leave-requested", ());
+        }
+    });
 }

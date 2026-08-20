@@ -26,6 +26,10 @@ export function getReader(bookId: number) {
   return invoke<ReaderPayload>("get_reader", { bookId });
 }
 
+export function completeAppExit() {
+  return invoke<void>("complete_app_exit");
+}
+
 export type SaveBookmarkInput = {
   bookId: number;
   chapterIndex: number;

@@ -1,8 +1,9 @@
 import { open } from "@tauri-apps/plugin-dialog";
-import { useCallback, useEffect, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { importBooks, listBooks } from "@/lib/api";
+import { completeAppExit, importBooks, listBooks } from "@/lib/api";
 import { errorMessage } from "@/lib/errors";
 import type { BookSummary } from "@/types";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -15,11 +16,46 @@ type ViewState =
   | { kind: "wordlist" }
   | { kind: "reader"; bookId: number; chapterIndex?: number };
 
+export type LeaveRequestHandler = () => void;
+
 function App() {
   const [view, setView] = useState<ViewState>({ kind: "library" });
   const [books, setBooks] = useState<BookSummary[]>([]);
   const [loadingBooks, setLoadingBooks] = useState(true);
   const [importing, setImporting] = useState(false);
+  const leaveRequestHandlerRef = useRef<LeaveRequestHandler | null>(null);
+
+  const registerLeaveRequestHandler = useCallback((handler: LeaveRequestHandler) => {
+    leaveRequestHandlerRef.current = handler;
+    return () => {
+      if (leaveRequestHandlerRef.current === handler) {
+        leaveRequestHandlerRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void listen("app-leave-requested", () => {
+      const handler = leaveRequestHandlerRef.current;
+      if (handler) {
+        handler();
+        return;
+      }
+      void completeAppExit();
+    }).then((cleanup) => {
+      if (disposed) {
+        cleanup();
+      } else {
+        unlisten = cleanup;
+      }
+    });
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, []);
 
   const refreshLibrary = useCallback(async () => {
     setLoadingBooks(true);
@@ -72,6 +108,7 @@ function App() {
       <ReaderView
         bookId={view.bookId}
         initialChapterIndex={view.chapterIndex}
+        registerLeaveRequestHandler={registerLeaveRequestHandler}
         onBack={async () => {
           setView({ kind: "library" });
           await refreshLibrary();
