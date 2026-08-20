@@ -73,6 +73,7 @@ export function ReaderTokens({
     activeSearchResult && activeSearchResult.blockIndex === block.block_index
       ? caseInsensitiveTextRange(block.text, activeSearchResult.query)
       : null;
+  const activeSentenceRange = sentenceRangeForActiveToken(block, activeTokenKey);
   let tokenOffset = 0;
   return (
     <>
@@ -90,6 +91,8 @@ export function ReaderTokens({
             ? "reader-wordlist-highlight reader-wordlist-highlight-repeat"
             : undefined;
         const isBookmarked = bookmarkedTokenKey === syncKey;
+        const isInActiveSentence =
+          activeSentenceRange !== null && index >= activeSentenceRange.start && index < activeSentenceRange.end;
         const tokenStart = tokenOffset;
         const tokenEnd = tokenStart + token.text.length;
         const isBookSearchHit = Boolean(searchRange && tokenEnd > searchRange.start && tokenStart < searchRange.end);
@@ -108,6 +111,7 @@ export function ReaderTokens({
               token.normalized_text && "clickable",
               isBookmarked && "bookmarked",
               hasTiming && "synced",
+              isInActiveSentence && "active-sentence",
               activeTokenKey === syncKey && "active",
               (isBookSearchHit || isChapterFindHit) && "search-hit",
               isActiveChapterFindHit && "find-hit-active",
@@ -165,6 +169,55 @@ export function ReaderTokens({
       })}
     </>
   );
+}
+
+function sentenceRangeForActiveToken(
+  block: ChapterPayload["blocks"][number],
+  activeTokenKey: string | null,
+): { start: number; end: number } | null {
+  if (!activeTokenKey) {
+    return null;
+  }
+
+  const activeIndex = block.tokens.findIndex(
+    (_, index) => timedTokenKey(block.block_index, index) === activeTokenKey,
+  );
+  if (activeIndex < 0) {
+    return null;
+  }
+
+  let start = 0;
+  for (let index = activeIndex - 1; index >= 0; index -= 1) {
+    if (isSentenceTerminator(block.tokens[index].text)) {
+      start = index + 1;
+      break;
+    }
+  }
+
+  let end = block.tokens.length;
+  for (let index = activeIndex; index < block.tokens.length; index += 1) {
+    if (isSentenceTerminator(block.tokens[index].text)) {
+      end = index + 1;
+      while (end < block.tokens.length && isClosingSentencePunctuation(block.tokens[end].text)) {
+        end += 1;
+      }
+      break;
+    }
+  }
+
+  return { start, end };
+}
+
+function isSentenceTerminator(text: string) {
+  return text === "." || text === "!" || text === "?";
+}
+
+function isClosingSentencePunctuation(text: string) {
+  return matchesTrimmedText(text, '"') || matchesTrimmedText(text, "'") || matchesTrimmedText(text, ")") || matchesTrimmedText(text, "]");
+}
+
+function matchesTrimmedText(text: string, value: string) {
+  return text.trim() === value;
 }
 
 function renderHighlightedTokenText(

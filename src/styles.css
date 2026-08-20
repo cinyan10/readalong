@@ -1039,9 +1039,15 @@ svg {
   outline: 1px solid oklch(0.58 0.12 242 / 0.34);
 }
 
+.reader-token.active-sentence {
+  background: oklch(var(--mark) / 0.42);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
 .reader-token.active,
 .reader-token.active[class*="level-"] {
-  background: oklch(var(--primary) / 0.18);
+  background: oklch(0.67 0.15 30 / 0.34);
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
   outline: 1px solid oklch(var(--primary) / 0.26);
