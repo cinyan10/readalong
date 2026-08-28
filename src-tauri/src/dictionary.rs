@@ -81,7 +81,7 @@ pub async fn lookup_word(
 ) -> Result<DictionaryLookup> {
     let selected_word =
         normalize_word(&word).ok_or_else(|| anyhow!("Select one English word to look up."))?;
-    let lookup_words = lookup_candidates(&selected_word, &root_word);
+    let mut lookup_words = lookup_candidates(&selected_word, &root_word);
     let client = Client::builder()
         .timeout(Duration::from_secs(20))
         .http1_only()
@@ -91,7 +91,10 @@ pub async fn lookup_word(
     let mut last_error = None;
     let mut entries = Vec::new();
     let mut definitions = Vec::new();
-    for candidate in lookup_words {
+    let mut candidate_index = 0;
+    while candidate_index < lookup_words.len() {
+        let candidate = lookup_words[candidate_index].clone();
+        candidate_index += 1;
         match fetch_first_page(&client, &candidate).await {
             Ok(page) => {
                 let mut urls = candidate_urls(&page.html, &page.source_url, &candidate);
@@ -126,6 +129,14 @@ pub async fn lookup_word(
                     .collect::<Vec<_>>();
                 if candidate_definitions.is_empty() {
                     last_error = Some(anyhow!("No Oxford definitions found for {candidate}."));
+                    // Oxford's inflection pages explicitly link irregular forms to
+                    // their headword (for example, "past participle of sting").
+                    // Use that authoritative relation when suffix heuristics cannot.
+                    for lemma in inflection_candidates(&page.html, &selected_word) {
+                        if !lookup_words.iter().any(|word| word == &lemma) {
+                            lookup_words.push(lemma);
+                        }
+                    }
                     continue;
                 }
 
@@ -644,6 +655,39 @@ fn lookup_candidates(selected_word: &str, root_word: &str) -> Vec<String> {
     unique(candidates)
 }
 
+fn inflection_candidates(html: &str, selected_word: &str) -> Vec<String> {
+    let document = Html::parse_document(html);
+    let node_selector = Selector::parse("p, span, li").expect("valid selector");
+    let anchor_selector = Selector::parse("a[href]").expect("valid selector");
+    let selected_word = selected_word.to_ascii_lowercase();
+    let mut candidates = Vec::new();
+
+    for node in document.select(&node_selector) {
+        let text = clean_text(&node.text().collect::<Vec<_>>().join(" ")).to_ascii_lowercase();
+        if !(text.contains("past tense") || text.contains("past participle"))
+            || !text.contains(" of ")
+        {
+            continue;
+        }
+        for anchor in node.select(&anchor_selector) {
+            let lemma = clean_text(&anchor.text().collect::<Vec<_>>().join(" "));
+            let Some(lemma) = normalize_word(&lemma) else {
+                continue;
+            };
+            if lemma == selected_word {
+                continue;
+            }
+            let Some(href) = anchor.value().attr("href") else {
+                continue;
+            };
+            if href.contains("/definition/english/") {
+                candidates.push(lemma);
+            }
+        }
+    }
+    unique(candidates)
+}
+
 fn normalize_word(word: &str) -> Option<String> {
     let mut best = String::new();
     let mut current = String::new();
@@ -796,6 +840,16 @@ mod tests {
             lookup_candidates("contemplating", ""),
             vec!["contemplating", "contemplate", "contemplat"]
         );
+    }
+
+    #[test]
+    fn extracts_irregular_lemma_from_oxford_inflection_page() {
+        let html = r#"
+          <p class="entry inflected-form">past tense, past participle of
+            <a href="/definition/english/sting_1">sting</a>
+          </p>
+        "#;
+        assert_eq!(inflection_candidates(html, "stung"), vec!["sting"]);
     }
 
     #[test]

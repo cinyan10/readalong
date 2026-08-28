@@ -20,7 +20,8 @@ export function LookupDialog({
   const result = lookup.result;
   const choice = result?.context_definition;
   const examples = choice?.examples ?? [];
-  const displayWord = result?.selected_word || lookup.word;
+  // `word` is the resolved Oxford headword; `selected_word` may be an inflection.
+  const displayWord = result?.word || lookup.word;
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const startDrag = (event: ReactMouseEvent<HTMLDivElement>) => {
     if (event.button !== 0) {
@@ -149,4 +150,3 @@ function LookupSection({ title, body }: { title: string; body: string }) {
     </section>
   );
 }
-
