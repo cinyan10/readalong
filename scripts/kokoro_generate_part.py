@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import unicodedata
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,8 @@ from kokoro import KModel, KPipeline
 SAMPLE_RATE = 24_000
 REPO_ID = "hexgrad/Kokoro-82M"
 DEFAULT_VOICE = "bf_emma"
+ELLIPSIS_SILENCE_SECONDS = 0.7
+PUNCTUATION_SILENCE_SECONDS = 0.35
 
 
 def emit_progress(stage: str, completed: int, total: int) -> None:
@@ -46,6 +49,23 @@ def render_audio(pipeline: KPipeline, text: str, voice: str, speed: float) -> np
     return np.concatenate(chunks)
 
 
+def punctuation_only_silence(text: str) -> np.ndarray | None:
+    """Return a pause for punctuation-only blocks instead of voicing punctuation."""
+    stripped = text.strip()
+    if not stripped or not all(
+        character.isspace() or unicodedata.category(character).startswith(("P", "S"))
+        for character in stripped
+    ):
+        return None
+
+    duration = (
+        ELLIPSIS_SILENCE_SECONDS
+        if "…" in stripped or "..." in stripped
+        else PUNCTUATION_SILENCE_SECONDS
+    )
+    return np.zeros(int(SAMPLE_RATE * duration), dtype=np.float32)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--request", type=Path, required=True)
@@ -73,7 +93,9 @@ def main() -> None:
 
     for paragraph in paragraphs:
         output_path = Path(paragraph["output_path"])
-        audio = render_audio(pipeline, paragraph["text"], voice, speed)
+        audio = punctuation_only_silence(paragraph["text"])
+        if audio is None:
+            audio = render_audio(pipeline, paragraph["text"], voice, speed)
         sf.write(output_path, audio, SAMPLE_RATE)
         part_chunks.append(audio)
         part_chunks.append(silence)
