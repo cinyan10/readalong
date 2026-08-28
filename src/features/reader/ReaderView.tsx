@@ -2074,6 +2074,9 @@ export function ReaderView({
     if (cachedEntry) {
       setLookupDialog({
         word: menu.word,
+        context: `${menu.word}\n\n${menu.context}`,
+        cefrLevel: menu.cefrLevel,
+        rootWord: menu.rootWord,
         x: menu.lookupX,
         y: menu.lookupY,
         loading: false,
@@ -2084,6 +2087,9 @@ export function ReaderView({
     }
     setLookupDialog({
       word: menu.word,
+      context: `${menu.word}\n\n${menu.context}`,
+      cefrLevel: menu.cefrLevel,
+      rootWord: menu.rootWord,
       x: menu.lookupX,
       y: menu.lookupY,
       loading: true,
@@ -2098,6 +2104,9 @@ export function ReaderView({
         }
         setLookupDialog({
           word: menu.word,
+          context: `${menu.word}\n\n${menu.context}`,
+          cefrLevel: menu.cefrLevel,
+          rootWord: menu.rootWord,
           x: menu.lookupX,
           y: menu.lookupY,
           loading: false,
@@ -2111,6 +2120,9 @@ export function ReaderView({
         }
         setLookupDialog({
           word: menu.word,
+          context: `${menu.word}\n\n${menu.context}`,
+          cefrLevel: menu.cefrLevel,
+          rootWord: menu.rootWord,
           x: menu.lookupX,
           y: menu.lookupY,
           loading: false,
@@ -2119,6 +2131,35 @@ export function ReaderView({
         });
       });
   }, [bookId, wordContextMenu, wordlistEntries]);
+
+  const refreshLookupDialog = useCallback(() => {
+    if (!lookupDialog) {
+      return;
+    }
+    const requestId = lookupRequestRef.current + 1;
+    lookupRequestRef.current = requestId;
+    const current = lookupDialog;
+    setLookupDialog((dialog) => (dialog ? { ...dialog, loading: true, error: null, result: null } : dialog));
+    dictionaryAudioRef.current?.pause();
+    void lookupWord(current.word, current.context, current.cefrLevel, current.rootWord, true)
+      .then((result) => {
+        if (lookupRequestRef.current !== requestId) {
+          return;
+        }
+        setLookupDialog((dialog) => (dialog ? { ...dialog, loading: false, error: null, result } : dialog));
+      })
+      .catch((error) => {
+        if (lookupRequestRef.current !== requestId) {
+          return;
+        }
+        setLookupDialog((dialog) => ({
+          ...(dialog ?? current),
+          loading: false,
+          error: errorMessage(error, "Lookup failed."),
+          result: null,
+        }));
+      });
+  }, [lookupDialog]);
 
   const openImage = useCallback((image: ReaderImage) => {
     setImageZoom(1);
@@ -2807,6 +2848,7 @@ export function ReaderView({
           <LookupDialog
             lookup={lookupDialog}
             onClose={() => setLookupDialog(null)}
+            onRefresh={refreshLookupDialog}
             onMove={(x, y) => setLookupDialog((current) => (current ? { ...current, x, y } : current))}
             onPlayPronunciation={(audioUrl) => {
               const audio = dictionaryAudioRef.current;

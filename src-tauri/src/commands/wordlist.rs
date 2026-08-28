@@ -77,11 +77,23 @@ fn spawn_wordlist_enrichment(db_path: PathBuf, window: Window, entry_id: i64) {
                 _ => return,
             }
         };
-        let lookup = crate::dictionary::lookup_word(
+        let context = format!("{}\n\n{}", entry.root_word, entry.context);
+        let lemma = crate::dictionary::normalize_cache_lemma(&entry.root_word, &entry.root_word);
+        let context_key = crate::dictionary::context_cache_key(&context);
+        let (cached_oxford, cached_context) = match db::connect(&db_path) {
+            Ok(connection) => (
+                db::get_oxford_cache(&connection, &lemma).ok().flatten(),
+                db::get_context_cache(&connection, &lemma, &context_key).ok().flatten(),
+            ),
+            Err(_) => (None, None),
+        };
+        let lookup = crate::dictionary::lookup_word_with_cached_data(
             entry.root_word.clone(),
-            format!("{}\n\n{}", entry.root_word, entry.context),
+            context,
             entry.cefr_level.clone(),
             entry.root_word.clone(),
+            cached_oxford,
+            cached_context,
         )
         .await;
         let updated = {
@@ -89,7 +101,24 @@ fn spawn_wordlist_enrichment(db_path: PathBuf, window: Window, entry_id: i64) {
                 return;
             };
             match lookup {
-                Ok(result) => db::update_wordlist_entry_lookup(&connection, entry_id, Some(&result), ""),
+                Ok((result, oxford_payload)) => {
+                    let canonical = crate::dictionary::normalize_cache_lemma(&result.word, "");
+                    if !oxford_payload.is_empty() && !canonical.is_empty() {
+                        let _ = db::save_oxford_cache(&connection, &canonical, &oxford_payload);
+                        if canonical != lemma {
+                            let _ = db::save_oxford_cache(&connection, &lemma, &oxford_payload);
+                        }
+                    }
+                    if !context_key.is_empty() && !canonical.is_empty() {
+                        if let Ok(payload) = serde_json::to_string(&result) {
+                            let _ = db::save_context_cache(&connection, &canonical, &context_key, &payload);
+                            if canonical != lemma {
+                                let _ = db::save_context_cache(&connection, &lemma, &context_key, &payload);
+                            }
+                        }
+                    }
+                    db::update_wordlist_entry_lookup(&connection, entry_id, Some(&result), "")
+                }
                 Err(error) => db::update_wordlist_entry_lookup(&connection, entry_id, None, &error.to_string()),
             }
         };

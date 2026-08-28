@@ -85,8 +85,67 @@ pub async fn lookup_word(
     context: String,
     cefr_level: String,
     root_word: String,
+    refresh: bool,
+    state: State<'_, AppState>,
 ) -> Result<crate::dictionary::DictionaryLookup, String> {
-    crate::dictionary::lookup_word(word, context, cefr_level, root_word)
-        .await
-        .map_err(|error| error.to_string())
+    let requested_lemma = crate::dictionary::normalize_cache_lemma(&word, &root_word);
+    let lemma_candidates = crate::dictionary::cache_lemma_candidates(&word, &root_word);
+    let context_key = crate::dictionary::context_cache_key(&context);
+    let (cached_oxford, cached_context) = {
+        let connection = state
+            .db
+            .lock()
+            .map_err(|_| "Database lock failed.".to_string())?;
+        let mut context = None;
+        let mut oxford = None;
+        for lemma in &lemma_candidates {
+            if context.is_none() && !refresh && !context_key.is_empty() {
+                context = db::get_context_cache(&connection, lemma, &context_key)
+                    .map_err(|error| error.to_string())?;
+            }
+            if oxford.is_none() {
+                oxford = db::get_oxford_cache(&connection, lemma)
+                    .map_err(|error| error.to_string())?;
+            }
+            if (context.is_some() || refresh || context_key.is_empty()) && oxford.is_some() {
+                break;
+            }
+        }
+        (oxford, context)
+    };
+
+    let (lookup, oxford_payload) = crate::dictionary::lookup_word_with_cached_data(
+        word,
+        context,
+        cefr_level,
+        root_word,
+        cached_oxford,
+        cached_context,
+    )
+    .await
+    .map_err(|error| error.to_string())?;
+
+    let canonical_lemma = crate::dictionary::normalize_cache_lemma(&lookup.word, "");
+    if !oxford_payload.is_empty() && !canonical_lemma.is_empty() {
+        let connection = state
+            .db
+            .lock()
+            .map_err(|_| "Database lock failed.".to_string())?;
+        db::save_oxford_cache(&connection, &canonical_lemma, &oxford_payload)
+            .map_err(|error| error.to_string())?;
+        if canonical_lemma != requested_lemma && !requested_lemma.is_empty() {
+            db::save_oxford_cache(&connection, &requested_lemma, &oxford_payload)
+                .map_err(|error| error.to_string())?;
+        }
+        if !context_key.is_empty() {
+            let payload = serde_json::to_string(&lookup).map_err(|error| error.to_string())?;
+            db::save_context_cache(&connection, &canonical_lemma, &context_key, &payload)
+                .map_err(|error| error.to_string())?;
+            if canonical_lemma != requested_lemma && !requested_lemma.is_empty() {
+                db::save_context_cache(&connection, &requested_lemma, &context_key, &payload)
+                    .map_err(|error| error.to_string())?;
+            }
+        }
+    }
+    Ok(lookup)
 }

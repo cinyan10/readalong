@@ -179,6 +179,22 @@ CREATE TABLE IF NOT EXISTS reader_highlights (
     UNIQUE(book_id, chapter_index, block_index, start_token_index, end_token_index, start_offset, end_offset)
 );
 
+CREATE TABLE IF NOT EXISTS dictionary_oxford_cache (
+    lemma TEXT PRIMARY KEY,
+    payload TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS dictionary_context_cache (
+    lemma TEXT NOT NULL,
+    context_key TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY(lemma, context_key)
+);
+
 CREATE INDEX IF NOT EXISTS idx_books_title ON books(title);
 CREATE INDEX IF NOT EXISTS idx_book_chapters_book ON book_chapters(book_id, chapter_index);
 CREATE INDEX IF NOT EXISTS idx_chapter_blocks_book ON chapter_blocks(book_id, chapter_index, block_index);
@@ -188,6 +204,7 @@ CREATE INDEX IF NOT EXISTS idx_book_word_frequencies_book ON book_word_frequenci
 CREATE INDEX IF NOT EXISTS idx_wordlist_entries_book ON wordlist_entries(book_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_wordlist_entries_root ON wordlist_entries(root_word);
 CREATE INDEX IF NOT EXISTS idx_reader_highlights_book_chapter ON reader_highlights(book_id, chapter_index, block_index);
+CREATE INDEX IF NOT EXISTS idx_dictionary_context_cache_lemma ON dictionary_context_cache(lemma);
 "#;
 
 pub enum ImportOutcome {
@@ -331,6 +348,7 @@ include!("library.rs");
 include!("reader.rs");
 include!("wordlist.rs");
 include!("highlights.rs");
+include!("dictionary_cache.rs");
 include!("audio.rs");
 include!("progress.rs");
 include!("reader_structure.rs");

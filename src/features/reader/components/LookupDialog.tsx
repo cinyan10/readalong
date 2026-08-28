@@ -1,4 +1,4 @@
-import { XIcon } from "lucide-react";
+import { RefreshCwIcon, XIcon } from "lucide-react";
 import { useRef, type MouseEvent as ReactMouseEvent } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,11 +9,13 @@ import { clampNumber } from "../reader-utils";
 export function LookupDialog({
   lookup,
   onClose,
+  onRefresh,
   onMove,
   onPlayPronunciation,
 }: {
   lookup: LookupDialogState;
   onClose: () => void;
+  onRefresh: () => void;
   onMove: (x: number, y: number) => void;
   onPlayPronunciation: (audioUrl: string) => void;
 }) {
@@ -74,9 +76,14 @@ export function LookupDialog({
             {result?.word_type ? <Badge variant="outline">{result.word_type}</Badge> : null}
           </div>
         </div>
-        <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close lookup">
-          <XIcon />
-        </Button>
+        <div className="lookup-actions">
+          <Button variant="ghost" size="icon" onClick={onRefresh} disabled={lookup.loading} aria-label="Refresh lookup" title="Refresh lookup">
+            <RefreshCwIcon />
+          </Button>
+          <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close lookup" title="Close lookup">
+            <XIcon />
+          </Button>
+        </div>
       </div>
 
       {lookup.loading ? (

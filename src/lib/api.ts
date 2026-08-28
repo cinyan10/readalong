@@ -64,12 +64,13 @@ export function searchBook(bookId: number, query: string) {
   return invoke<BookSearchResult[]>("search_book", { bookId, query });
 }
 
-export function lookupWord(word: string, context: string, cefrLevel: string, rootWord: string) {
+export function lookupWord(word: string, context: string, cefrLevel: string, rootWord: string, refresh = false) {
   return invoke<DictionaryLookup>("lookup_word", {
     word,
     context,
     cefrLevel,
     rootWord,
+    refresh,
   });
 }
 

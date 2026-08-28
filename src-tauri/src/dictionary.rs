@@ -14,7 +14,7 @@ const OXFORD_ORIGIN: &str = "https://www.oxfordlearnersdictionaries.com";
 const USER_AGENT: &str = "Mozilla/5.0";
 const MAX_CANDIDATE_PAGES: usize = 8;
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DictionaryDefinition {
     pub entry_id: String,
     pub word_type: String,
@@ -24,7 +24,7 @@ pub struct DictionaryDefinition {
     pub source_url: String,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DictionaryChoice {
     pub entry_id: Option<String>,
     pub definition_number: Option<usize>,
@@ -34,7 +34,7 @@ pub struct DictionaryChoice {
     pub matched: bool,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DictionaryLookup {
     pub word: String,
     pub selected_word: String,
@@ -50,7 +50,7 @@ pub struct DictionaryLookup {
     pub original_meaning: String,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct OxfordEntry {
     entry_id: String,
     word: String,
@@ -58,6 +58,12 @@ struct OxfordEntry {
     cefr_level: String,
     phonetics: Vec<String>,
     audio_url: String,
+    definitions: Vec<DictionaryDefinition>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct OxfordCachePayload {
+    entries: Vec<OxfordEntry>,
     definitions: Vec<DictionaryDefinition>,
 }
 
@@ -79,8 +85,29 @@ pub async fn lookup_word(
     cefr_level: String,
     root_word: String,
 ) -> Result<DictionaryLookup> {
+    lookup_word_with_cached_data(word, context, cefr_level, root_word, None, None)
+        .await
+        .map(|(lookup, _)| lookup)
+}
+
+pub async fn lookup_word_with_cached_data(
+    word: String,
+    context: String,
+    cefr_level: String,
+    root_word: String,
+    cached_oxford: Option<String>,
+    cached_context: Option<String>,
+) -> Result<(DictionaryLookup, String)> {
     let selected_word =
         normalize_word(&word).ok_or_else(|| anyhow!("Select one English word to look up."))?;
+
+    if let Some(payload) = cached_context {
+        if let Ok(mut lookup) = serde_json::from_str::<DictionaryLookup>(&payload) {
+            lookup.selected_word = selected_word;
+            return Ok((lookup, cached_oxford.unwrap_or_default()));
+        }
+    }
+
     let mut lookup_words = lookup_candidates(&selected_word, &root_word);
     let client = Client::builder()
         .timeout(Duration::from_secs(20))
@@ -89,10 +116,18 @@ pub async fn lookup_word(
         .context("Unable to create dictionary HTTP client")?;
 
     let mut last_error = None;
-    let mut entries = Vec::new();
-    let mut definitions = Vec::new();
+    let (mut entries, mut definitions) = if let Some(payload) = cached_oxford.as_deref() {
+        match serde_json::from_str::<OxfordCachePayload>(payload) {
+            Ok(payload) if !payload.definitions.is_empty() => {
+                (payload.entries, payload.definitions)
+            }
+            _ => (Vec::new(), Vec::new()),
+        }
+    } else {
+        (Vec::new(), Vec::new())
+    };
     let mut candidate_index = 0;
-    while candidate_index < lookup_words.len() {
+    while definitions.is_empty() && candidate_index < lookup_words.len() {
         let candidate = lookup_words[candidate_index].clone();
         candidate_index += 1;
         match fetch_first_page(&client, &candidate).await {
@@ -180,7 +215,7 @@ pub async fn lookup_word(
     let original_meaning = choice.original_meaning.clone().unwrap_or_default();
     let dictionary_choice = choice.into_dictionary_choice(selected_definition);
 
-    Ok(DictionaryLookup {
+    let lookup = DictionaryLookup {
         word: selected_entry.word.clone(),
         selected_word,
         word_type: selected_entry.word_type.clone(),
@@ -192,12 +227,37 @@ pub async fn lookup_word(
         phonetics: selected_entry.phonetics.clone(),
         audio_url: selected_entry.audio_url.clone(),
         source_url: selected_definition.source_url.clone(),
-        definitions,
+        definitions: definitions.clone(),
         context_definition: dictionary_choice,
         simple_meaning,
         in_context_meaning,
         original_meaning,
-    })
+    };
+    let cache_payload = serde_json::to_string(&OxfordCachePayload {
+        entries,
+        definitions,
+    })?;
+    Ok((lookup, cache_payload))
+}
+
+pub fn normalize_cache_lemma(word: &str, root_word: &str) -> String {
+    normalize_word(root_word)
+        .or_else(|| normalize_word(word))
+        .unwrap_or_default()
+}
+
+pub fn cache_lemma_candidates(word: &str, root_word: &str) -> Vec<String> {
+    normalize_word(word)
+        .map(|selected| lookup_candidates(&selected, root_word))
+        .unwrap_or_default()
+}
+
+pub fn context_cache_key(context: &str) -> String {
+    context
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase()
 }
 
 async fn fetch_first_page(client: &Client, word: &str) -> Result<FetchedPage> {
@@ -940,5 +1000,14 @@ mod tests {
             extract_json("```json\n{\"matched\":true}\n```"),
             "{\"matched\":true}"
         );
+    }
+
+    #[test]
+    fn normalizes_context_cache_keys() {
+        assert_eq!(
+            context_cache_key("  The   QUICK fox\n jumps  "),
+            "the quick fox jumps"
+        );
+        assert_ne!(context_cache_key("a fox"), context_cache_key("a dog"));
     }
 }

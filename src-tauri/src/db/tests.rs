@@ -416,6 +416,23 @@ mod tests {
     }
 
     #[test]
+    fn dictionary_cache_round_trips_oxford_and_context_payloads() {
+        let connection = frequency_test_connection();
+        save_oxford_cache(&connection, "wugalpha", "{\"definitions\":[]}").expect("oxford");
+        save_context_cache(&connection, "wugalpha", "the wugalpha", "{\"word\":\"wugalpha\"}")
+            .expect("context");
+
+        assert_eq!(
+            get_oxford_cache(&connection, "wugalpha").expect("read oxford"),
+            Some("{\"definitions\":[]}".to_string())
+        );
+        assert_eq!(
+            get_context_cache(&connection, "wugalpha", "the wugalpha").expect("read context"),
+            Some("{\"word\":\"wugalpha\"}".to_string())
+        );
+    }
+
+    #[test]
     fn virtual_dividers_split_after_their_previous_paragraph() {
         let parts = build_chapter_parts(
             10,

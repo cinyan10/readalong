@@ -114,6 +114,9 @@ export type ChapterContextMenuState = {
 
 export type LookupDialogState = {
   word: string;
+  context: string;
+  cefrLevel: string;
+  rootWord: string;
   x: number;
   y: number;
   loading: boolean;
