@@ -452,7 +452,7 @@ async fn choose_definition(
                     "Return compact JSON only with: entry_id, definition_number, simple_meaning, ",
                     "in_context_meaning, original_meaning, explanation, matched. ",
                     "simple_meaning should be plain English. in_context_meaning should explain the word as used here. ",
-                    "original_meaning should explain literal, etymological, or idiom-origin meaning only when useful; otherwise use an empty string. ",
+                    "original_meaning should explain the word's literal meaning in clear plain English when it helps understanding; otherwise use an empty string. ",
                     "Use matched false only when no Oxford definition covers the contextual meaning."
                 )
             },

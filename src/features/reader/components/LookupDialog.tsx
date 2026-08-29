@@ -128,7 +128,7 @@ export function LookupDialog({
             </section>
           ) : null}
 
-          <LookupSection title="Original meaning" body={result.original_meaning} />
+          <LookupSection title="Literal meaning" body={result.original_meaning} />
 
           {examples.length ? (
             <section className="lookup-section">
