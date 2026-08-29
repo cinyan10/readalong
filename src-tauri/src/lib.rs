@@ -9,7 +9,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
-    Mutex,
+    Arc, Mutex,
 };
 
 use rusqlite::Connection;
@@ -20,6 +20,7 @@ use tauri::{Emitter, Manager, RunEvent, WindowEvent};
 pub struct AppState {
     data_dir: PathBuf,
     db: Mutex<Connection>,
+    prefetch_running: Arc<AtomicBool>,
 }
 
 pub struct ExitState {
@@ -39,10 +40,16 @@ pub fn run() {
             let data_dir = app.path().app_data_dir()?;
             fs::create_dir_all(&data_dir)?;
             let connection = db::connect(&data_dir.join("readalong.sqlite3"))?;
+            let should_resume_prefetch = db::reset_definition_prefetch_jobs(&connection)?;
+            let prefetch_running = Arc::new(AtomicBool::new(false));
             app.manage(AppState {
-                data_dir,
+                data_dir: data_dir.clone(),
                 db: Mutex::new(connection),
+                prefetch_running: Arc::clone(&prefetch_running),
             });
+            if should_resume_prefetch {
+                commands::start_definition_prefetch_worker(data_dir.join("readalong.sqlite3"), prefetch_running);
+            }
             app.manage(ExitState {
                 approved: AtomicBool::new(false),
             });
@@ -139,6 +146,7 @@ pub fn run() {
             commands::get_chapter,
             commands::search_book,
             commands::lookup_word,
+            commands::lookup_word_at,
             commands::list_wordlist_entries,
             commands::list_book_wordlist_entries,
             commands::add_wordlist_entry,
@@ -150,6 +158,7 @@ pub fn run() {
             commands::generate_part_audio,
             commands::sync_part_alignment,
             commands::save_progress,
+            commands::prefetch_read_block,
             commands::save_bookmark,
             complete_app_exit,
         ])

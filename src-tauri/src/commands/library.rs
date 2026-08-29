@@ -149,3 +149,31 @@ pub async fn lookup_word(
     }
     Ok(lookup)
 }
+
+#[tauri::command]
+pub async fn lookup_word_at(
+    book_id: i64,
+    block_index: i64,
+    token_index: usize,
+    refresh: bool,
+    state: State<'_, AppState>,
+) -> Result<crate::dictionary::DictionaryLookup, String> {
+    let input = {
+        let connection = state
+            .db
+            .lock()
+            .map_err(|_| "Database lock failed.".to_string())?;
+        db::dictionary_context_for_token(&connection, book_id, block_index, token_index)
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| "Select one English word to look up.".to_string())?
+    };
+    lookup_word(
+        input.word,
+        input.context,
+        input.cefr_level,
+        input.root_word,
+        refresh,
+        state,
+    )
+    .await
+}

@@ -74,6 +74,15 @@ export function lookupWord(word: string, context: string, cefrLevel: string, roo
   });
 }
 
+export function lookupWordAt(bookId: number, blockIndex: number, tokenIndex: number, refresh = false) {
+  return invoke<DictionaryLookup>("lookup_word_at", {
+    bookId,
+    blockIndex,
+    tokenIndex,
+    refresh,
+  });
+}
+
 export function listWordlistEntries() {
   return invoke<WordlistEntry[]>("list_wordlist_entries");
 }
@@ -190,4 +199,8 @@ export function saveProgress(input: SaveProgressInput) {
     lastPlayingBlockIndex: input.lastPlayingBlockIndex ?? null,
     lastPlayingTokenIndex: input.lastPlayingTokenIndex ?? null,
   });
+}
+
+export function prefetchReadBlock(bookId: number, blockIndex: number) {
+  return invoke<void>("prefetch_read_block", { bookId, blockIndex });
 }

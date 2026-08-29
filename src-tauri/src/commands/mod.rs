@@ -3,6 +3,7 @@ use std::fs;
 use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::{atomic::{AtomicBool, Ordering}, Arc};
 use std::thread;
 
 use serde::{Deserialize, Serialize};
@@ -27,4 +28,5 @@ include!("wordlist.rs");
 include!("highlights.rs");
 include!("audio.rs");
 include!("progress.rs");
+include!("prefetch.rs");
 include!("audio_worker.rs");

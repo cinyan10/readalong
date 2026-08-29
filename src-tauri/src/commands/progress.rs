@@ -29,7 +29,25 @@ pub fn save_progress(
         last_playing_token_index,
         progress_percent,
     )
-    .map_err(|error| error.to_string())
+    .map_err(|error| error.to_string())?;
+    let queued = db::mark_read_block_and_enqueue_blue_prefetch(&connection, book_id, block_index).ok();
+    drop(connection);
+    if queued == Some(true) {
+        start_definition_prefetch_worker(state.data_dir.join("readalong.sqlite3"), Arc::clone(&state.prefetch_running));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn prefetch_read_block(book_id: i64, block_index: i64, state: State<'_, AppState>) {
+    let queued = state
+        .db
+        .lock()
+        .ok()
+        .and_then(|connection| db::mark_read_block_and_enqueue_blue_prefetch(&connection, book_id, block_index).ok());
+    if queued == Some(true) {
+        start_definition_prefetch_worker(state.data_dir.join("readalong.sqlite3"), Arc::clone(&state.prefetch_running));
+    }
 }
 
 #[tauri::command]

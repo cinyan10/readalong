@@ -21,9 +21,10 @@ import {
   getReader,
   listWordlistEntries,
   listBookHighlights,
-  lookupWord,
+  lookupWordAt,
   saveBookmark,
   completeAppExit,
+  prefetchReadBlock,
   saveProgress,
   searchBook,
   syncPartAlignment,
@@ -186,6 +187,7 @@ export function ReaderView({
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const chapterFindInputRef = useRef<HTMLInputElement | null>(null);
   const visibleBlockRef = useRef<number | null>(null);
+  const prefetchedReadBlocksRef = useRef<Set<number>>(new Set());
   const saveTimerRef = useRef<number | null>(null);
   const saveQueuedPayloadRef = useRef<SaveProgressInput | null>(null);
   const saveFlushScheduledRef = useRef(false);
@@ -592,6 +594,19 @@ export function ReaderView({
     [flushQueuedProgress],
   );
 
+  const prefetchVisibleBlock = useCallback(
+    (blockIndex: number) => {
+      if (prefetchedReadBlocksRef.current.has(blockIndex)) {
+        return;
+      }
+      prefetchedReadBlocksRef.current.add(blockIndex);
+      void prefetchReadBlock(bookId, blockIndex).catch(() => {
+        prefetchedReadBlocksRef.current.delete(blockIndex);
+      });
+    },
+    [bookId],
+  );
+
   useEffect(() => {
     const requestId = searchRequestRef.current + 1;
     searchRequestRef.current = requestId;
@@ -688,6 +703,7 @@ export function ReaderView({
     lastAutoScrollTokenRef.current = null;
     lastSelectionSeekKeyRef.current = "";
     activeTimedTokenRef.current = null;
+    prefetchedReadBlocksRef.current.clear();
     setActiveTokenKey(null);
     setWordContextMenu(null);
     setLookupDialog(null);
@@ -707,23 +723,33 @@ export function ReaderView({
           return;
         }
         const blockIndex = Number((visible.target as HTMLElement).dataset.blockIndex);
-        if (!Number.isFinite(blockIndex) || blockIndex === visibleBlockRef.current) {
+        if (!Number.isFinite(blockIndex)) {
+          return;
+        }
+        if (blockIndex === visibleBlockRef.current) {
+          prefetchVisibleBlock(blockIndex);
           return;
         }
         visibleBlockRef.current = blockIndex;
         saveCurrentProgress({ blockIndex });
+        prefetchVisibleBlock(blockIndex);
       },
       { rootMargin: "-35% 0px -50% 0px", threshold: [0.2, 0.6, 1] },
     );
     blocks.forEach((block) => observer.observe(block));
     return () => observer.disconnect();
-  }, [chapter, reader, saveCurrentProgress]);
+  }, [chapter, prefetchVisibleBlock, reader, saveCurrentProgress]);
 
   useEffect(() => {
-    const handleScroll = () => saveCurrentProgress();
+    const handleScroll = () => {
+      saveCurrentProgress();
+      if (visibleBlockRef.current !== null) {
+        prefetchVisibleBlock(visibleBlockRef.current);
+      }
+    };
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
-  }, [saveCurrentProgress]);
+  }, [prefetchVisibleBlock, saveCurrentProgress]);
 
   useEffect(() => {
     if (!activePart && !currentQueueItem) {
@@ -1732,6 +1758,7 @@ export function ReaderView({
         blockIndex: activeToken.block_index,
         lastPlayingToken: activeToken,
       });
+      prefetchVisibleBlock(activeToken.block_index);
     }
 
     if (!audioState.playing || !key || lastAutoScrollTokenRef.current === key) {
@@ -1751,7 +1778,7 @@ export function ReaderView({
       lastAutoScrollTokenRef.current = key;
       element.scrollIntoView({ block: "start", behavior: "smooth" });
     }
-  }, [audioState.currentTime, audioState.duration, audioState.playing, partAlignment, saveCurrentProgress]);
+  }, [audioState.currentTime, audioState.duration, audioState.playing, partAlignment, prefetchVisibleBlock, saveCurrentProgress]);
 
   const toggleReaderHighlight = useCallback(
     (range: HighlightRangeInput) => {
@@ -2077,6 +2104,8 @@ export function ReaderView({
         context: `${menu.word}\n\n${menu.context}`,
         cefrLevel: menu.cefrLevel,
         rootWord: menu.rootWord,
+        blockIndex: menu.blockIndex,
+        tokenIndex: menu.tokenIndex,
         x: menu.lookupX,
         y: menu.lookupY,
         loading: false,
@@ -2090,6 +2119,8 @@ export function ReaderView({
       context: `${menu.word}\n\n${menu.context}`,
       cefrLevel: menu.cefrLevel,
       rootWord: menu.rootWord,
+      blockIndex: menu.blockIndex,
+      tokenIndex: menu.tokenIndex,
       x: menu.lookupX,
       y: menu.lookupY,
       loading: true,
@@ -2097,7 +2128,7 @@ export function ReaderView({
       result: null,
     });
     dictionaryAudioRef.current?.pause();
-    void lookupWord(menu.word, `${menu.word}\n\n${menu.context}`, menu.cefrLevel, menu.rootWord)
+    void lookupWordAt(bookId, menu.blockIndex, menu.tokenIndex)
       .then((result) => {
         if (lookupRequestRef.current !== requestId) {
           return;
@@ -2107,6 +2138,8 @@ export function ReaderView({
           context: `${menu.word}\n\n${menu.context}`,
           cefrLevel: menu.cefrLevel,
           rootWord: menu.rootWord,
+          blockIndex: menu.blockIndex,
+          tokenIndex: menu.tokenIndex,
           x: menu.lookupX,
           y: menu.lookupY,
           loading: false,
@@ -2123,6 +2156,8 @@ export function ReaderView({
           context: `${menu.word}\n\n${menu.context}`,
           cefrLevel: menu.cefrLevel,
           rootWord: menu.rootWord,
+          blockIndex: menu.blockIndex,
+          tokenIndex: menu.tokenIndex,
           x: menu.lookupX,
           y: menu.lookupY,
           loading: false,
@@ -2141,7 +2176,7 @@ export function ReaderView({
     const current = lookupDialog;
     setLookupDialog((dialog) => (dialog ? { ...dialog, loading: true, error: null, result: null } : dialog));
     dictionaryAudioRef.current?.pause();
-    void lookupWord(current.word, current.context, current.cefrLevel, current.rootWord, true)
+    void lookupWordAt(bookId, current.blockIndex, current.tokenIndex, true)
       .then((result) => {
         if (lookupRequestRef.current !== requestId) {
           return;
@@ -2159,7 +2194,7 @@ export function ReaderView({
           result: null,
         }));
       });
-  }, [lookupDialog]);
+  }, [bookId, lookupDialog]);
 
   const openImage = useCallback((image: ReaderImage) => {
     setImageZoom(1);

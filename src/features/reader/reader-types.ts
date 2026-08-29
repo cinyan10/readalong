@@ -117,6 +117,8 @@ export type LookupDialogState = {
   context: string;
   cefrLevel: string;
   rootWord: string;
+  blockIndex: number;
+  tokenIndex: number;
   x: number;
   y: number;
   loading: boolean;

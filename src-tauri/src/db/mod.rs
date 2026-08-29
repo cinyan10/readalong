@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Context, Result};
-use chrono::Utc;
+use chrono::{Local, Utc};
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use sha2::{Digest, Sha256};
 
@@ -195,6 +195,30 @@ CREATE TABLE IF NOT EXISTS dictionary_context_cache (
     PRIMARY KEY(lemma, context_key)
 );
 
+CREATE TABLE IF NOT EXISTS daily_read_blocks (
+    book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+    local_date TEXT NOT NULL,
+    block_index INTEGER NOT NULL,
+    read_at TEXT NOT NULL,
+    PRIMARY KEY(book_id, local_date, block_index)
+);
+
+CREATE TABLE IF NOT EXISTS definition_prefetch_jobs (
+    book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+    block_index INTEGER NOT NULL,
+    token_index INTEGER NOT NULL,
+    word TEXT NOT NULL,
+    root_word TEXT NOT NULL,
+    cefr_level TEXT NOT NULL DEFAULT '',
+    context TEXT NOT NULL,
+    context_key TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    last_error TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY(book_id, block_index, token_index)
+);
+
 CREATE INDEX IF NOT EXISTS idx_books_title ON books(title);
 CREATE INDEX IF NOT EXISTS idx_book_chapters_book ON book_chapters(book_id, chapter_index);
 CREATE INDEX IF NOT EXISTS idx_chapter_blocks_book ON chapter_blocks(book_id, chapter_index, block_index);
@@ -205,6 +229,8 @@ CREATE INDEX IF NOT EXISTS idx_wordlist_entries_book ON wordlist_entries(book_id
 CREATE INDEX IF NOT EXISTS idx_wordlist_entries_root ON wordlist_entries(root_word);
 CREATE INDEX IF NOT EXISTS idx_reader_highlights_book_chapter ON reader_highlights(book_id, chapter_index, block_index);
 CREATE INDEX IF NOT EXISTS idx_dictionary_context_cache_lemma ON dictionary_context_cache(lemma);
+CREATE INDEX IF NOT EXISTS idx_daily_read_blocks_date ON daily_read_blocks(local_date, book_id);
+CREATE INDEX IF NOT EXISTS idx_definition_prefetch_jobs_status ON definition_prefetch_jobs(status, created_at);
 "#;
 
 pub enum ImportOutcome {
@@ -349,6 +375,7 @@ include!("reader.rs");
 include!("wordlist.rs");
 include!("highlights.rs");
 include!("dictionary_cache.rs");
+include!("prefetch.rs");
 include!("audio.rs");
 include!("progress.rs");
 include!("reader_structure.rs");

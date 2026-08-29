@@ -315,6 +315,51 @@ mod tests {
     }
 
     #[test]
+    fn queues_each_blue_word_occurrence_once_per_day() {
+        let connection = frequency_test_connection();
+        save_wordlist_entry(
+            &connection,
+            1,
+            1,
+            2,
+            2,
+            "wugalpha",
+            "wugalpha",
+            "",
+            "",
+        )
+        .expect("word list entry");
+
+        assert!(mark_read_block_and_enqueue_blue_prefetch(&connection, 1, 2).expect("queue"));
+        assert!(!mark_read_block_and_enqueue_blue_prefetch(&connection, 1, 2).expect("dedupe"));
+
+        let job_count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM definition_prefetch_jobs", [], |row| row.get(0))
+            .expect("job count");
+        assert_eq!(job_count, 2);
+
+        let first = next_definition_prefetch_job(&connection)
+            .expect("next job")
+            .expect("queued job");
+        assert_eq!(first.word, "wugalpha");
+        assert!(first.context.starts_with("wugalpha\n\n"));
+        assert!(first.context.contains("the wugalpha wugalpha wugalpha"));
+    }
+
+    #[test]
+    fn token_lookup_context_uses_the_same_sentence_key_as_prefetching() {
+        let connection = frequency_test_connection();
+
+        let context = dictionary_context_for_token(&connection, 1, 2, 2)
+            .expect("lookup context")
+            .expect("word token");
+        assert_eq!(context.word, "wugalpha");
+        assert_eq!(context.root_word, "wugalpha");
+        assert_eq!(context.context_key, crate::dictionary::context_cache_key(&context.context));
+        assert!(context.context.ends_with("the wugalpha wugalpha wugalpha wugbeta wuggamma"));
+    }
+
+    #[test]
     fn deletes_wordlist_entry_by_root() {
         let connection = frequency_test_connection();
         save_wordlist_entry(&connection, 1, 1, 2, 2, "wugalpha", "wugalpha", "", "")

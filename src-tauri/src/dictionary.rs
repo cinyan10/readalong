@@ -79,6 +79,7 @@ enum FetchError {
     Other(anyhow::Error),
 }
 
+#[cfg(test)]
 pub async fn lookup_word(
     word: String,
     context: String,
