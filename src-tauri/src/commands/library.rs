@@ -4,7 +4,90 @@ pub fn list_books(state: State<'_, AppState>) -> Result<Vec<BookSummary>, String
         .db
         .lock()
         .map_err(|_| "Database lock failed.".to_string())?;
-    db::list_books(&connection).map_err(|error| error.to_string())
+    let mut books = db::list_books(&connection).map_err(|error| error.to_string())?;
+    for book in &mut books {
+        populate_book_audio_availability(&connection, book).map_err(|error| error.to_string())?;
+    }
+    Ok(books)
+}
+
+fn populate_book_audio_availability(
+    connection: &rusqlite::Connection,
+    book: &mut BookSummary,
+) -> anyhow::Result<()> {
+    let parts = readable_book_audio_parts(connection, book.id)?;
+    let total_parts = parts.len() as i64;
+    let mut generated_parts = 0_i64;
+    for part in parts {
+        if part_audio_is_available(connection, book.id, &part)? {
+            generated_parts += 1;
+        }
+    }
+
+    book.audio_generated_parts = generated_parts;
+    book.audio_total_parts = total_parts;
+    book.audio_percent = if total_parts == 0 {
+        0.0
+    } else {
+        generated_parts as f64 / total_parts as f64 * 100.0
+    };
+    Ok(())
+}
+
+#[tauri::command]
+pub fn list_missing_book_audio_parts(
+    book_id: i64,
+    state: State<'_, AppState>,
+) -> Result<Vec<BookAudioPart>, String> {
+    let connection = state
+        .db
+        .lock()
+        .map_err(|_| "Database lock failed.".to_string())?;
+    let parts = readable_book_audio_parts(&connection, book_id).map_err(|error| error.to_string())?;
+    parts
+        .into_iter()
+        .filter_map(|part| match part_audio_is_available(&connection, book_id, &part) {
+            Ok(true) => None,
+            Ok(false) => Some(Ok(part)),
+            Err(error) => Some(Err(error.to_string())),
+        })
+        .collect()
+}
+
+fn readable_book_audio_parts(
+    connection: &rusqlite::Connection,
+    book_id: i64,
+) -> anyhow::Result<Vec<BookAudioPart>> {
+    let Some(reader) = db::get_reader(connection, book_id)? else {
+        return Ok(Vec::new());
+    };
+    let mut parts = Vec::new();
+    for chapter in reader.chapters {
+        for part in chapter.parts {
+            if !db::part_audio_paragraphs(connection, book_id, chapter.chapter_index, part.part_index)?.is_empty() {
+                parts.push(BookAudioPart {
+                    chapter_index: chapter.chapter_index,
+                    part_index: part.part_index,
+                });
+            }
+        }
+    }
+    Ok(parts)
+}
+
+fn part_audio_is_available(
+    connection: &rusqlite::Connection,
+    book_id: i64,
+    part: &BookAudioPart,
+) -> anyhow::Result<bool> {
+    Ok(db::get_part_audio(
+        connection,
+        book_id,
+        part.chapter_index,
+        part.part_index,
+        DEFAULT_AUDIO_VOICE,
+    )?
+    .is_some_and(|audio| Path::new(&audio.audio_path).exists()))
 }
 
 #[tauri::command]
@@ -31,7 +114,10 @@ pub fn import_books(
         }
     }
 
-    let books = db::list_books(&connection).map_err(|error| error.to_string())?;
+    let mut books = db::list_books(&connection).map_err(|error| error.to_string())?;
+    for book in &mut books {
+        populate_book_audio_availability(&connection, book).map_err(|error| error.to_string())?;
+    }
     Ok(ImportSummary {
         imported,
         skipped,

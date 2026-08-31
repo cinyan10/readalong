@@ -13,7 +13,7 @@ use tauri::{Emitter, State, Window};
 use crate::cefr;
 use crate::db::{self, GeneratedAudioParagraph, GeneratedPartAudio, ImportOutcome};
 use crate::models::{
-    BookSummary, ChapterPayload, ImportFailure, ImportSummary, PartAlignmentPayload,
+    BookAudioPart, BookSummary, ChapterPayload, ImportFailure, ImportSummary, PartAlignmentPayload,
     PartAudioPayload, ReaderHighlight, ReaderPayload, ReadingBookmark, WordlistEntry,
 };
 use crate::AppState;

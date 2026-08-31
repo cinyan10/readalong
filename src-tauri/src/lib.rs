@@ -141,6 +141,7 @@ pub fn run() {
     let app = builder
         .invoke_handler(tauri::generate_handler![
             commands::list_books,
+            commands::list_missing_book_audio_parts,
             commands::import_books,
             commands::get_reader,
             commands::get_chapter,

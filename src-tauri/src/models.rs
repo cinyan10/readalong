@@ -9,9 +9,18 @@ pub struct BookSummary {
     pub author: String,
     pub cover_asset_path: Option<String>,
     pub progress_percent: f64,
+    pub audio_generated_parts: i64,
+    pub audio_total_parts: i64,
+    pub audio_percent: f64,
     pub last_read_at: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BookAudioPart {
+    pub chapter_index: i64,
+    pub part_index: i64,
 }
 
 #[derive(Debug, Serialize)]

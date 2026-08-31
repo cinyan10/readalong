@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 import type {
   BookSearchResult,
+  BookAudioPart,
   BookSummary,
   ChapterPayload,
   DictionaryLookup,
@@ -16,6 +17,10 @@ import type {
 
 export function listBooks() {
   return invoke<BookSummary[]>("list_books");
+}
+
+export function listMissingBookAudioParts(bookId: number) {
+  return invoke<BookAudioPart[]>("list_missing_book_audio_parts", { bookId });
 }
 
 export function importBooks(paths: string[]) {

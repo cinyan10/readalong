@@ -175,6 +175,51 @@ svg {
   align-items: start;
 }
 
+.audio-queue-status {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  border-bottom: 1px solid oklch(var(--border));
+  padding: 0 0 0.8rem;
+  color: oklch(var(--muted-foreground));
+}
+
+.audio-queue-status > svg {
+  color: oklch(var(--primary));
+}
+
+.audio-queue-status p,
+.audio-queue-status span {
+  margin: 0;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.audio-queue-status p {
+  color: oklch(var(--foreground));
+  font-size: 0.82rem;
+  font-weight: 750;
+  line-height: 1.2;
+}
+
+.audio-queue-status span {
+  margin-top: 0.15rem;
+  font-size: 0.75rem;
+}
+
+.audio-queue-status .audio-queue-pending {
+  flex: none;
+  margin: 0;
+}
+
+.book-metrics {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+}
+
 .book-tile {
   display: grid;
   justify-items: center;
@@ -292,6 +337,10 @@ svg {
   letter-spacing: 0.01em;
 }
 
+.book-audio-progress .progress-ring-fill {
+  stroke: oklch(0.66 0.15 156);
+}
+
 .progress-ring {
   width: 2.4rem;
   height: 2.4rem;
@@ -325,6 +374,48 @@ svg {
   width: 2.4rem;
   height: 2.4rem;
   border-radius: 999px;
+}
+
+.library-context-menu {
+  position: fixed;
+  z-index: 45;
+  min-width: 11.75rem;
+  overflow: hidden;
+  border: 1px solid oklch(var(--border) / 0.78);
+  border-radius: calc(var(--radius) - 0.48rem);
+  background: oklch(var(--popover) / 0.96);
+  box-shadow: 0 18px 44px oklch(var(--foreground) / 0.18);
+  padding: 0.25rem;
+  backdrop-filter: blur(16px);
+}
+
+.library-context-menu button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.5rem;
+  border: 0;
+  border-radius: calc(var(--radius) - 0.62rem);
+  background: transparent;
+  padding: 0.5rem 0.65rem;
+  color: oklch(var(--popover-foreground));
+  font-size: 0.82rem;
+  font-weight: 750;
+  line-height: 1.15;
+  text-align: left;
+  cursor: pointer;
+}
+
+.library-context-menu button:hover,
+.library-context-menu button:focus-visible {
+  background: oklch(var(--accent));
+  color: oklch(var(--accent-foreground));
+  outline: 0;
+}
+
+.library-context-menu button svg {
+  width: 0.95rem;
+  height: 0.95rem;
 }
 
 .reader-shell {

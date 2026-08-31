@@ -1,7 +1,9 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { BookMarkedIcon, BookOpenTextIcon, ImportIcon, LibraryIcon } from "lucide-react";
+import { AudioLinesIcon, BookMarkedIcon, BookOpenTextIcon, ImportIcon, LibraryIcon, XIcon } from "lucide-react";
+import { useEffect, useState, type MouseEvent as ReactMouseEvent } from "react";
 
 import type { BookSummary } from "@/types";
+import type { BookAudioQueueStatus } from "@/App";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -14,6 +16,9 @@ export function LibraryView({
   onImport,
   onOpenWordlist,
   onOpenBook,
+  audioQueueStatus,
+  onQueueAudio,
+  onCancelAudioQueue,
 }: {
   books: BookSummary[];
   loading: boolean;
@@ -21,7 +26,43 @@ export function LibraryView({
   onImport: () => void;
   onOpenWordlist: () => void;
   onOpenBook: (book: BookSummary) => void;
+  audioQueueStatus: BookAudioQueueStatus | null;
+  onQueueAudio: (book: BookSummary) => void;
+  onCancelAudioQueue: () => void;
 }) {
+  const [contextMenu, setContextMenu] = useState<{ book: BookSummary; x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    const dismiss = () => setContextMenu(null);
+    window.addEventListener("mousedown", dismiss);
+    window.addEventListener("blur", dismiss);
+    return () => {
+      window.removeEventListener("mousedown", dismiss);
+      window.removeEventListener("blur", dismiss);
+    };
+  }, []);
+
+  useEffect(() => {
+    const dismissOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setContextMenu(null);
+      }
+    };
+    window.addEventListener("keydown", dismissOnEscape);
+    return () => window.removeEventListener("keydown", dismissOnEscape);
+  }, []);
+
+  const openContextMenu = (event: ReactMouseEvent, book: BookSummary) => {
+    event.preventDefault();
+    const width = 188;
+    const height = 48;
+    setContextMenu({
+      book,
+      x: Math.min(event.clientX, window.innerWidth - width - 12),
+      y: Math.min(event.clientY, window.innerHeight - height - 12),
+    });
+  };
+
   return (
     <main className="min-h-screen bg-background text-foreground">
       <header className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur">
@@ -50,12 +91,45 @@ export function LibraryView({
       </header>
 
       <section className="mx-auto flex w-full max-w-7xl flex-col gap-8 px-6 py-8">
+        {audioQueueStatus ? (
+          <div className="audio-queue-status" aria-live="polite">
+            <AudioLinesIcon aria-hidden="true" />
+            <div className="min-w-0 flex-1">
+              <p>{audioQueueStatus.cancelling ? "Stopping audio queue" : "Generating book audio"}</p>
+              <span className="truncate">
+                {audioQueueStatus.activeBookTitle}
+                {audioQueueStatus.totalParts
+                  ? ` · ${audioQueueStatus.completedParts}/${audioQueueStatus.totalParts} parts`
+                  : " · Preparing parts"}
+              </span>
+            </div>
+            {audioQueueStatus.queuedBookCount ? (
+              <span className="audio-queue-pending">+{audioQueueStatus.queuedBookCount} queued</span>
+            ) : null}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onCancelAudioQueue}
+              disabled={audioQueueStatus.cancelling}
+              aria-label="Cancel audio queue"
+              title="Cancel audio queue"
+            >
+              <XIcon />
+            </Button>
+          </div>
+        ) : null}
         {loading ? (
           <LibrarySkeleton />
         ) : books.length ? (
           <div className="library-grid">
             {books.map((book) => (
-              <BookTile key={book.id} book={book} onOpen={() => onOpenBook(book)} />
+              <BookTile
+                key={book.id}
+                book={book}
+                audioQueueStatus={audioQueueStatus}
+                onOpen={() => onOpenBook(book)}
+                onContextMenu={(event) => openContextMenu(event, book)}
+              />
             ))}
           </div>
         ) : (
@@ -73,15 +147,48 @@ export function LibraryView({
           </Empty>
         )}
       </section>
+      {contextMenu ? (
+        <div
+          className="library-context-menu"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              onQueueAudio(contextMenu.book);
+              setContextMenu(null);
+            }}
+          >
+            <AudioLinesIcon aria-hidden="true" />
+            Generate missing audio
+          </button>
+        </div>
+      ) : null}
     </main>
   );
 }
 
-function BookTile({ book, onOpen }: { book: BookSummary; onOpen: () => void }) {
+function BookTile({
+  book,
+  audioQueueStatus,
+  onOpen,
+  onContextMenu,
+}: {
+  book: BookSummary;
+  audioQueueStatus: BookAudioQueueStatus | null;
+  onOpen: () => void;
+  onContextMenu: (event: ReactMouseEvent) => void;
+}) {
   const coverSrc = book.cover_asset_path ? convertFileSrc(book.cover_asset_path) : null;
   const progress = Math.round(book.progress_percent);
+  const isGenerating = audioQueueStatus?.activeBookId === book.id;
+  const liveAudioPercent = isGenerating && book.audio_total_parts > 0 && audioQueueStatus.totalParts > 0
+    ? ((book.audio_generated_parts + audioQueueStatus.completedParts + audioQueueStatus.currentPartPercent / 100) / book.audio_total_parts) * 100
+    : book.audio_percent;
+  const audioPercent = Math.max(0, Math.min(100, liveAudioPercent));
   return (
-    <article className="book-tile">
+    <article className="book-tile" onContextMenu={onContextMenu}>
       <button className="book-open" type="button" onClick={onOpen} aria-label={`Open ${book.title}`}>
         <div className="cover-frame">
           {coverSrc ? (
@@ -97,22 +204,28 @@ function BookTile({ book, onOpen }: { book: BookSummary; onOpen: () => void }) {
           {book.title}
         </span>
       </button>
-      <div className="book-progress" aria-label={`${progress}% read`}>
-        <ProgressRing percent={book.progress_percent} />
-        <span>{progress}%</span>
+      <div className="book-metrics">
+        <div className="book-progress" aria-label={`${progress}% read`}>
+          <ProgressRing percent={book.progress_percent} />
+          <span>Read {progress}%</span>
+        </div>
+        <div className="book-progress book-audio-progress" aria-label={audioLabel(book, audioPercent, isGenerating)}>
+          <ProgressRing percent={audioPercent} tone="audio" />
+          <span>{isGenerating ? "Generating" : audioLabel(book, audioPercent, false)}</span>
+        </div>
       </div>
     </article>
   );
 }
 
-function ProgressRing({ percent }: { percent: number }) {
+function ProgressRing({ percent, tone }: { percent: number; tone?: "audio" }) {
   const radius = 18;
   const circumference = 2 * Math.PI * radius;
   const clampedPercent = Math.max(0, Math.min(100, percent));
   const offset = circumference * (1 - clampedPercent / 100);
 
   return (
-    <svg className="progress-ring" viewBox="0 0 48 48" aria-hidden="true">
+    <svg className={`progress-ring${tone ? ` progress-ring-${tone}` : ""}`} viewBox="0 0 48 48" aria-hidden="true">
       <circle className="progress-ring-track" cx="24" cy="24" r={radius} />
       <circle
         className="progress-ring-fill"
@@ -123,6 +236,19 @@ function ProgressRing({ percent }: { percent: number }) {
       />
     </svg>
   );
+}
+
+function audioLabel(book: BookSummary, percent: number, isGenerating: boolean) {
+  if (isGenerating) {
+    return "Generating audio";
+  }
+  if (!book.audio_total_parts || percent <= 0) {
+    return "No audio";
+  }
+  if (percent >= 100) {
+    return "Ready";
+  }
+  return `Partial ${Math.round(percent)}%`;
 }
 
 function LibrarySkeleton() {

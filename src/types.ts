@@ -4,9 +4,17 @@ export type BookSummary = {
   author: string;
   cover_asset_path: string | null;
   progress_percent: number;
+  audio_generated_parts: number;
+  audio_total_parts: number;
+  audio_percent: number;
   last_read_at: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type BookAudioPart = {
+  chapter_index: number;
+  part_index: number;
 };
 
 export type ChapterPartSummary = {

@@ -677,4 +677,115 @@ mod tests {
             hash_text(&tts_pronunciation_text_for_book("Hachiman answered.", &pronunciation))
         );
     }
+
+    #[test]
+    fn book_audio_availability_requires_part_files() {
+        let root = std::env::temp_dir().join(format!(
+            "readalong-audio-availability-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).expect("temp directory");
+        let connection = db::connect(&root.join("reader.sqlite3")).expect("database");
+        let timestamp = chrono::Utc::now().to_rfc3339();
+        connection
+            .execute(
+                r#"
+                INSERT INTO books (
+                    id, slug, title, author, content_hash, original_filename, stored_path,
+                    cover_asset_path, created_at, updated_at
+                ) VALUES (1, 'book', 'Book', '', 'audio-test', 'book.epub', 'book.epub', NULL, ?, ?)
+                "#,
+                rusqlite::params![timestamp, timestamp],
+            )
+            .expect("book");
+        for (chapter_index, title, source_href, block_index, text) in [
+            (0, "1 One", "chapter001.xhtml", 0, "First readable paragraph."),
+            (1, "2 Two", "chapter002.xhtml", 1, "Second readable paragraph."),
+        ] {
+            connection
+                .execute(
+                    "INSERT INTO book_chapters (book_id, chapter_index, title, source_href, start_block_index, end_block_index) VALUES (1, ?, ?, ?, ?, ?)",
+                    rusqlite::params![chapter_index, title, source_href, block_index, block_index],
+                )
+                .expect("chapter");
+            connection
+                .execute(
+                    "INSERT INTO chapter_blocks (book_id, chapter_index, block_index, kind, text, asset_path, alt) VALUES (1, ?, ?, 'paragraph', ?, NULL, '')",
+                    rusqlite::params![chapter_index, block_index, text],
+                )
+                .expect("paragraph");
+        }
+
+        let mut book = db::list_books(&connection).expect("books").remove(0);
+        populate_book_audio_availability(&connection, &mut book).expect("availability");
+        assert_eq!((book.audio_generated_parts, book.audio_total_parts), (0, 2));
+
+        save_current_test_part(&connection, &root, 0, "1 One", 0, "First readable paragraph.", true);
+        populate_book_audio_availability(&connection, &mut book).expect("partial availability");
+        assert_eq!((book.audio_generated_parts, book.audio_total_parts), (1, 2));
+
+        save_current_test_part(&connection, &root, 1, "2 Two", 1, "Second readable paragraph.", false);
+        populate_book_audio_availability(&connection, &mut book).expect("missing file availability");
+        assert_eq!((book.audio_generated_parts, book.audio_total_parts), (1, 2));
+
+        let missing_part_path = root.join("part-1.wav");
+        std::fs::write(&missing_part_path, []).expect("part file");
+        populate_book_audio_availability(&connection, &mut book).expect("complete availability");
+        assert_eq!((book.audio_generated_parts, book.audio_total_parts), (2, 2));
+        assert_eq!(book.audio_percent, 100.0);
+
+        connection
+            .execute(
+                "UPDATE audio_paragraphs SET text_hash = 'older-format' WHERE book_id = 1 AND block_index = 1",
+                [],
+            )
+            .expect("legacy hash");
+        populate_book_audio_availability(&connection, &mut book).expect("legacy availability");
+        assert_eq!((book.audio_generated_parts, book.audio_total_parts), (2, 2));
+
+        drop(connection);
+        std::fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    fn save_current_test_part(
+        connection: &rusqlite::Connection,
+        root: &std::path::Path,
+        chapter_index: i64,
+        title: &str,
+        block_index: i64,
+        text: &str,
+        create_part_file: bool,
+    ) {
+        let part_path = root.join(format!("part-{chapter_index}.wav"));
+        let paragraph_path = root.join(format!("paragraph-{chapter_index}.wav"));
+        std::fs::write(&paragraph_path, []).expect("paragraph file");
+        if create_part_file {
+            std::fs::write(&part_path, []).expect("part file");
+        }
+        let timestamp = chrono::Utc::now().to_rfc3339();
+        connection
+            .execute(
+                "INSERT INTO audio_parts (book_id, chapter_index, part_index, voice, audio_path, paragraph_count, duration_seconds, created_at, updated_at) VALUES (1, ?, 0, ?, ?, 2, 1, ?, ?)",
+                rusqlite::params![chapter_index, DEFAULT_AUDIO_VOICE, part_path.to_string_lossy(), timestamp, timestamp],
+            )
+            .expect("audio part");
+        for (audio_block_index, audio_text, audio_path) in [
+            (title_audio_block_index(chapter_index), title, root.join(format!("title-{chapter_index}.wav"))),
+            (block_index, text, paragraph_path),
+        ] {
+            std::fs::write(&audio_path, []).expect("audio block file");
+            let pronunciation = pronunciation::JapanesePronunciation::for_book_texts(&[text.to_string()]);
+            let hash = hash_text(&tts_pronunciation_text_for_book(audio_text, &pronunciation));
+            connection
+                .execute(
+                    "INSERT INTO audio_paragraphs (book_id, chapter_index, part_index, block_index, voice, text_hash, audio_path, duration_seconds, created_at, updated_at) VALUES (1, ?, 0, ?, ?, ?, ?, 1, ?, ?)",
+                    rusqlite::params![chapter_index, audio_block_index, DEFAULT_AUDIO_VOICE, hash, audio_path.to_string_lossy(), timestamp, timestamp],
+                )
+                .expect("audio paragraph");
+        }
+    }
 }
