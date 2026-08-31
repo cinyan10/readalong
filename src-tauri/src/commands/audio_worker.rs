@@ -217,6 +217,7 @@ fn cached_audio_matches_current_format(
     chapter_index: i64,
     part_index: i64,
     voice: &str,
+    pronunciation: &pronunciation::JapanesePronunciation,
 ) -> anyhow::Result<bool> {
     let paragraphs = db::part_audio_paragraphs(connection, book_id, chapter_index, part_index)?;
     let existing =
@@ -231,7 +232,7 @@ fn cached_audio_matches_current_format(
             return Ok(false);
         };
         if !Path::new(&generated.audio_path).exists()
-            || generated.text_hash != hash_text(&tts_pronunciation_text(&paragraph.text))
+            || generated.text_hash != hash_text(&tts_pronunciation_text_for_book(&paragraph.text, pronunciation))
         {
             return Ok(false);
         }
@@ -252,7 +253,7 @@ fn cached_audio_matches_current_format(
         .get(&title_block_index)
         .is_some_and(|paragraph| {
             Path::new(&paragraph.audio_path).exists()
-                && paragraph.text_hash == hash_text(&tts_pronunciation_text(title))
+                && paragraph.text_hash == hash_text(&tts_pronunciation_text_for_book(title, pronunciation))
         }))
 }
 
@@ -421,7 +422,15 @@ fn hash_text(text: &str) -> String {
     format!("{:x}", Sha256::digest(text.as_bytes()))
 }
 
+#[cfg(test)]
 fn tts_pronunciation_text(text: &str) -> String {
+    tts_pronunciation_text_for_book(text, &pronunciation::JapanesePronunciation::empty())
+}
+
+fn tts_pronunciation_text_for_book(
+    text: &str,
+    pronunciation: &pronunciation::JapanesePronunciation,
+) -> String {
     let chars = text.chars().collect::<Vec<_>>();
     let mut out = String::with_capacity(text.len());
     let mut index = 0;
@@ -443,7 +452,7 @@ fn tts_pronunciation_text(text: &str) -> String {
         index += 1;
     }
 
-    out
+    pronunciation.replace_names(&out)
 }
 
 fn stutter_pronunciation(chars: &[char], index: usize) -> Option<(String, usize)> {
@@ -649,5 +658,23 @@ mod tests {
     fn tts_text_keeps_vocalization_strings_inside_words() {
         assert_eq!(tts_pronunciation_text("human and unhinged"), "human and unhinged");
         assert_eq!(tts_pronunciation_text("Yuigahama"), "Yuigahama");
+    }
+
+    #[test]
+    fn tts_text_phoneticizes_names_after_stutter_cleanup() {
+        let pronunciation = pronunciation::JapanesePronunciation::for_book_texts(&[]);
+        assert_eq!(
+            tts_pronunciation_text_for_book("H-Hachiman met Hikigaya.", &pronunciation),
+            "Hah-chee-mahn met Hee-kee-gah-yah."
+        );
+    }
+
+    #[test]
+    fn pronunciation_output_changes_the_cached_audio_hash() {
+        let pronunciation = pronunciation::JapanesePronunciation::for_book_texts(&[]);
+        assert_ne!(
+            hash_text("Hachiman answered."),
+            hash_text(&tts_pronunciation_text_for_book("Hachiman answered.", &pronunciation))
+        );
     }
 }

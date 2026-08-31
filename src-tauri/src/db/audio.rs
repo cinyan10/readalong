@@ -116,6 +116,22 @@ pub fn part_audio_paragraphs(
         .collect())
 }
 
+pub fn book_audio_texts(connection: &Connection, book_id: i64) -> Result<Vec<String>> {
+    let mut statement = connection.prepare(
+        r#"
+        SELECT text
+        FROM chapter_blocks
+        WHERE book_id = ?
+          AND kind = 'paragraph'
+          AND text != ''
+        ORDER BY block_index
+        "#,
+    )?;
+    let rows = statement.query_map(params![book_id], |row| row.get(0))?;
+    rows.collect::<rusqlite::Result<Vec<String>>>()
+        .map_err(Into::into)
+}
+
 pub fn generated_audio_paragraphs(
     connection: &Connection,
     book_id: i64,

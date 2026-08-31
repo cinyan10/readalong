@@ -123,6 +123,16 @@ pub async fn generate_part_audio(
     state: State<'_, AppState>,
     window: Window,
 ) -> Result<PartAudioPayload, String> {
+    let pronunciation = {
+        let connection = state
+            .db
+            .lock()
+            .map_err(|_| "Database lock failed.".to_string())?;
+        let book_texts = db::book_audio_texts(&connection, book_id)
+            .map_err(|error| error.to_string())?;
+        pronunciation::JapanesePronunciation::for_book_texts(&book_texts)
+    };
+
     {
         let connection = state
             .db
@@ -145,6 +155,7 @@ pub async fn generate_part_audio(
                     chapter_index,
                     part_index,
                     &audio.voice,
+                    &pronunciation,
                 )
                 .map_err(|error| error.to_string())?
                 {
@@ -187,7 +198,7 @@ pub async fn generate_part_audio(
     if part_index == 0 {
         let title = chapter_title.trim();
         if !title.is_empty() {
-            let tts_text = tts_pronunciation_text(title);
+            let tts_text = tts_pronunciation_text_for_book(title, &pronunciation);
             let block_index = title_audio_block_index(chapter_index);
             paragraph_hashes.insert(block_index, hash_text(&tts_text));
             request_paragraphs.push(GeneratorRequestParagraph {
@@ -198,7 +209,7 @@ pub async fn generate_part_audio(
         }
     }
     request_paragraphs.extend(paragraphs.iter().map(|paragraph| {
-        let tts_text = tts_pronunciation_text(&paragraph.text);
+        let tts_text = tts_pronunciation_text_for_book(&paragraph.text, &pronunciation);
         let text_hash = hash_text(&tts_text);
         paragraph_hashes.insert(paragraph.block_index, text_hash);
         GeneratorRequestParagraph {

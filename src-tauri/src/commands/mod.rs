@@ -18,6 +18,8 @@ use crate::models::{
 };
 use crate::AppState;
 
+mod pronunciation;
+
 const DEFAULT_AUDIO_VOICE: &str = "bf_emma";
 const DEFAULT_AUDIO_SPEED: f64 = 0.95;
 const PARAGRAPH_SILENCE_SECONDS: f64 = 0.22;

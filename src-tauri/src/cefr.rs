@@ -118,6 +118,14 @@ pub fn is_oxford_3000_a1_word(word: &str) -> bool {
         .any(|candidate| OXFORD_3000_A1_WORDS.contains(candidate))
 }
 
+pub fn has_vocabulary_entry(word: &str) -> bool {
+    let normalized = normalize_word_text(word);
+    !normalized.is_empty()
+        && lookup_candidates(&normalized).iter().any(|candidate| {
+            OXFORD_PROFILE.contains_key(candidate) || LEGACY_OLP_PROFILE.contains_key(candidate)
+        })
+}
+
 pub fn frequency_key(word: &str) -> Option<String> {
     let normalized = normalize_word_text(word);
     if normalized.is_empty() {
