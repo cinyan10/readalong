@@ -2091,6 +2091,9 @@ export function ReaderView({
     const requestId = lookupRequestRef.current + 1;
     lookupRequestRef.current = requestId;
     const menu = wordContextMenu;
+    const wordlistEntry = wordlistEntries.find(
+      (entry) => entry.book_id === bookId && entry.root_word === menu.rootWord,
+    );
     const cachedEntry = wordlistEntries.find(
       (entry) =>
         entry.definition &&
@@ -2102,6 +2105,7 @@ export function ReaderView({
       setLookupDialog({
         word: menu.word,
         context: `${menu.word}\n\n${menu.context}`,
+        wordlistContext: wordlistEntry?.context || null,
         cefrLevel: menu.cefrLevel,
         rootWord: menu.rootWord,
         blockIndex: menu.blockIndex,
@@ -2117,6 +2121,7 @@ export function ReaderView({
     setLookupDialog({
       word: menu.word,
       context: `${menu.word}\n\n${menu.context}`,
+      wordlistContext: wordlistEntry?.context || null,
       cefrLevel: menu.cefrLevel,
       rootWord: menu.rootWord,
       blockIndex: menu.blockIndex,
@@ -2136,6 +2141,7 @@ export function ReaderView({
         setLookupDialog({
           word: menu.word,
           context: `${menu.word}\n\n${menu.context}`,
+          wordlistContext: wordlistEntry?.context || null,
           cefrLevel: menu.cefrLevel,
           rootWord: menu.rootWord,
           blockIndex: menu.blockIndex,
@@ -2154,6 +2160,7 @@ export function ReaderView({
         setLookupDialog({
           word: menu.word,
           context: `${menu.word}\n\n${menu.context}`,
+          wordlistContext: wordlistEntry?.context || null,
           cefrLevel: menu.cefrLevel,
           rootWord: menu.rootWord,
           blockIndex: menu.blockIndex,

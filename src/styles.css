@@ -1358,6 +1358,13 @@ svg {
   line-height: 1.45;
 }
 
+.lookup-section p.lookup-saved-context {
+  border-left: 2px solid oklch(var(--primary) / 0.72);
+  color: oklch(var(--muted-foreground));
+  font-style: italic;
+  padding-left: 0.65rem;
+}
+
 .lookup-section a {
   width: fit-content;
   color: oklch(var(--primary));

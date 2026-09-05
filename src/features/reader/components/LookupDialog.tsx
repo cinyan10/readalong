@@ -110,7 +110,7 @@ export function LookupDialog({
             </div>
           ) : null}
 
-          <LookupSection title="Simple meaning" body={result.simple_meaning} />
+          {!choice?.definition ? <LookupSection title="Simple meaning" body={result.simple_meaning} /> : null}
           <LookupSection title="In context" body={result.in_context_meaning} />
 
           {choice?.matched && choice.definition ? (
@@ -120,11 +120,6 @@ export function LookupDialog({
                 {choice.definition_number ? <b>Definition {choice.definition_number}. </b> : null}
                 {choice.definition}
               </p>
-              {result.source_url ? (
-                <a href={result.source_url} target="_blank" rel="noreferrer">
-                  Oxford Learner's Dictionary
-                </a>
-              ) : null}
             </section>
           ) : null}
 
@@ -135,15 +130,40 @@ export function LookupDialog({
               <h3>Examples</h3>
               <div className="lookup-examples">
                 {examples.slice(0, 3).map((example) => (
-                  <blockquote key={example}>{example}</blockquote>
+                  <blockquote key={example}>{boldLookupWord(example, lookup.word, displayWord)}</blockquote>
                 ))}
               </div>
+            </section>
+          ) : null}
+
+          {lookup.wordlistContext ? (
+            <section className="lookup-section">
+              <h3>Saved sentence</h3>
+              <p className="lookup-saved-context">{boldLookupWord(lookup.wordlistContext, lookup.word, displayWord)}</p>
             </section>
           ) : null}
         </div>
       ) : null}
     </div>
   );
+}
+
+function boldLookupWord(text: string, selectedWord: string, headword: string) {
+  const words = [...new Set([selectedWord, headword].map((word) => word.trim()).filter(Boolean))].sort(
+    (left, right) => right.length - left.length,
+  );
+  if (!words.length) {
+    return text;
+  }
+  const expression = new RegExp(`\\b(${words.map(escapeRegex).join("|")})\\b`, "gi");
+  const parts = text.split(expression);
+  return parts.map((part, index) =>
+    index % 2 === 1 ? <strong key={`${part}-${index}`}>{part}</strong> : part,
+  );
+}
+
+function escapeRegex(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function LookupSection({ title, body }: { title: string; body: string }) {
