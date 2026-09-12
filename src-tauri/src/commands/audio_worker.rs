@@ -661,11 +661,14 @@ mod tests {
     }
 
     #[test]
-    fn tts_text_phoneticizes_names_after_stutter_cleanup() {
+    fn tts_text_only_replaces_rs_in_known_japanese_names() {
         let pronunciation = pronunciation::JapanesePronunciation::for_book_texts(&[]);
         assert_eq!(
-            tts_pronunciation_text_for_book("H-Hachiman met Hikigaya.", &pronunciation),
-            "Hah-chee-mahn met Hee-kee-gah-yah."
+            tts_pronunciation_text_for_book(
+                "H-Hachiman met Hiratsuka and Meguri.",
+                &pronunciation,
+            ),
+            "Hachiman met Hilatsuka and Meguli."
         );
     }
 
@@ -673,8 +676,11 @@ mod tests {
     fn pronunciation_output_changes_the_cached_audio_hash() {
         let pronunciation = pronunciation::JapanesePronunciation::for_book_texts(&[]);
         assert_ne!(
-            hash_text("Hachiman answered."),
-            hash_text(&tts_pronunciation_text_for_book("Hachiman answered.", &pronunciation))
+            hash_text("Hiratsuka answered."),
+            hash_text(&tts_pronunciation_text_for_book(
+                "Hiratsuka answered.",
+                &pronunciation,
+            ))
         );
     }
 
@@ -778,7 +784,8 @@ mod tests {
             (block_index, text, paragraph_path),
         ] {
             std::fs::write(&audio_path, []).expect("audio block file");
-            let pronunciation = pronunciation::JapanesePronunciation::for_book_texts(&[text.to_string()]);
+            let pronunciation =
+                pronunciation::JapanesePronunciation::for_book_texts(&[text.to_string()]);
             let hash = hash_text(&tts_pronunciation_text_for_book(audio_text, &pronunciation));
             connection
                 .execute(
