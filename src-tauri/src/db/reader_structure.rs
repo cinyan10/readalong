@@ -161,6 +161,20 @@ fn build_reader_chapters(
         let Some(key) = chapter_group_key(&chapter.title, &chapter.source_href) else {
             continue;
         };
+        let belongs_to_named_chapter =
+            is_fallback_chapter_title(&chapter.title, &chapter.source_href)
+                && previous_key.starts_with("chapter")
+                && groups.last().is_some_and(|group| {
+                    group.first().is_some_and(|first| {
+                        !is_fallback_chapter_title(&first.title, &first.source_href)
+                    })
+                });
+        if belongs_to_named_chapter {
+            if let Some(group) = groups.last_mut() {
+                group.push(chapter);
+            }
+            continue;
+        }
         if groups.is_empty() || previous_key != key {
             previous_key = key;
             groups.push(vec![chapter]);

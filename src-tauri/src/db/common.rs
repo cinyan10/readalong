@@ -48,6 +48,15 @@ fn chapter_group_title(title: &str, source_href: &str) -> String {
     }
 }
 
+fn is_fallback_chapter_title(title: &str, source_href: &str) -> bool {
+    let stem = source_stem(source_href);
+    if !stem.to_ascii_lowercase().starts_with("chapter") {
+        return false;
+    }
+    let fallback = stem.replace(['_', '-'], " ");
+    normalize_inline(title).eq_ignore_ascii_case(&normalize_inline(&fallback))
+}
+
 fn is_progress_chapter_title(title: &str) -> bool {
     let Some(first) = title.split_whitespace().next() else {
         return false;

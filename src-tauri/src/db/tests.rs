@@ -104,6 +104,76 @@ mod tests {
     }
 
     #[test]
+    fn groups_untitled_spine_files_under_the_preceding_named_chapter() {
+        let raw_chapters = vec![
+            RawChapterSummary {
+                title: "2: We meet Meguri Shiromeguri once more.".to_string(),
+                source_href: "Text/chapter002.xhtml".to_string(),
+                start_block_index: 10,
+                end_block_index: 19,
+            },
+            RawChapterSummary {
+                title: "Chapter003".to_string(),
+                source_href: "Text/chapter003.xhtml".to_string(),
+                start_block_index: 20,
+                end_block_index: 20,
+            },
+            RawChapterSummary {
+                title: "Chapter004".to_string(),
+                source_href: "Text/chapter004.xhtml".to_string(),
+                start_block_index: 21,
+                end_block_index: 29,
+            },
+            RawChapterSummary {
+                title: "3: Just as he figured, Minami Sagami hasn’t changed.".to_string(),
+                source_href: "Text/chapter005.xhtml".to_string(),
+                start_block_index: 30,
+                end_block_index: 39,
+            },
+        ];
+
+        let chapters = build_reader_chapters(&raw_chapters, &[]).expect("chapters");
+
+        assert_eq!(chapters.len(), 2);
+        assert_eq!(
+            chapters[0].title,
+            "2: We meet Meguri Shiromeguri once more."
+        );
+        assert_eq!(chapters[0].start_block_index, 10);
+        assert_eq!(chapters[0].end_block_index, 29);
+        assert_eq!(
+            chapters[1].title,
+            "3: Just as he figured, Minami Sagami hasn’t changed."
+        );
+        assert_eq!(chapters[1].start_block_index, 30);
+        assert_eq!(chapters[1].end_block_index, 39);
+    }
+
+    #[test]
+    fn keeps_fallback_titled_chapters_separate_without_a_named_anchor() {
+        let raw_chapters = vec![
+            RawChapterSummary {
+                title: "Chapter001".to_string(),
+                source_href: "Text/chapter001.xhtml".to_string(),
+                start_block_index: 0,
+                end_block_index: 9,
+            },
+            RawChapterSummary {
+                title: "Chapter002".to_string(),
+                source_href: "Text/chapter002.xhtml".to_string(),
+                start_block_index: 10,
+                end_block_index: 19,
+            },
+        ];
+
+        let chapters = build_reader_chapters(&raw_chapters, &[]).expect("chapters");
+
+        assert_eq!(chapters.len(), 2);
+        assert_eq!(chapters[0].title, "Chapter001");
+        assert_eq!(chapters[1].title, "Chapter002");
+    }
+
+    #[test]
     fn removes_repeated_chapter_heading_blocks_from_display_blocks() {
         let blocks = readable_chapter_blocks(
             "4 Komachi Hikigaya is shrewdly scheming.",
