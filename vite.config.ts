@@ -12,7 +12,9 @@ export default defineConfig({
   },
   clearScreen: false,
   server: {
-    port: 5173,
+    // Keep the desktop dev server on a high, project-specific port to avoid
+    // collisions with Vite and other common local development services.
+    port: 43173,
     strictPort: true,
     watch: {
       ignored: ["**/src-tauri/**"],

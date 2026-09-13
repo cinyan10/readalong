@@ -155,6 +155,7 @@ pub fn run() {
             commands::list_book_highlights,
             commands::toggle_highlight,
             commands::get_part_audio,
+            commands::generate_audio_preview,
             commands::get_part_alignment,
             commands::generate_part_audio,
             commands::sync_part_alignment,

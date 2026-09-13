@@ -5,7 +5,7 @@
   "identifier": "com.cinyan10.readalong",
   "build": {
     "beforeDevCommand": "bun run dev",
-    "devUrl": "http://localhost:5173",
+    "devUrl": "http://localhost:43173",
     "beforeBuildCommand": "bun run build",
     "frontendDist": "../dist"
   },

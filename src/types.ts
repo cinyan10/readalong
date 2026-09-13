@@ -199,6 +199,14 @@ export type PartAudioPayload = {
   alignment_error: string | null;
 };
 
+export type AudioPreviewPayload = {
+  text: string;
+  voice: string;
+  speed: number;
+  audio_path: string;
+  duration_seconds: number;
+};
+
 export type TimedToken = {
   block_index: number;
   token_index: number;

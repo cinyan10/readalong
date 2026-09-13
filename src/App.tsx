@@ -10,9 +10,12 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { LibraryView } from "@/features/library/LibraryView";
 import { ReaderView } from "@/features/reader/ReaderView";
 import { WordlistView } from "@/features/wordlist/WordlistView";
+import { SettingsView } from "@/features/settings/SettingsView";
+import { useSettings } from "@/lib/settings";
 
 type ViewState =
   | { kind: "library" }
+  | { kind: "settings" }
   | { kind: "wordlist" }
   | { kind: "reader"; bookId: number; chapterIndex?: number };
 
@@ -29,6 +32,7 @@ export type BookAudioQueueStatus = {
 };
 
 function App() {
+  const { audioGenerationSpeed } = useSettings();
   const [view, setView] = useState<ViewState>({ kind: "library" });
   const [books, setBooks] = useState<BookSummary[]>([]);
   const [loadingBooks, setLoadingBooks] = useState(true);
@@ -167,7 +171,7 @@ function App() {
               : current,
           );
           try {
-            await generatePartAudio(book.id, part.chapter_index, part.part_index, false);
+            await generatePartAudio(book.id, part.chapter_index, part.part_index, false, audioGenerationSpeed);
             completedParts += 1;
             setAudioQueueStatus((current) =>
               current ? { ...current, completedParts, currentPartPercent: 0 } : current,
@@ -200,7 +204,7 @@ function App() {
         void runAudioQueue();
       }
     }
-  }, []);
+  }, [audioGenerationSpeed]);
 
   const enqueueBookAudio = useCallback(
     (book: BookSummary) => {
@@ -305,6 +309,14 @@ function App() {
     );
   }
 
+  if (view.kind === "settings") {
+    return (
+      <TooltipProvider>
+        <SettingsView onBack={() => setView({ kind: "library" })} />
+      </TooltipProvider>
+    );
+  }
+
   return (
     <TooltipProvider>
       <LibraryView
@@ -313,6 +325,7 @@ function App() {
         importing={importing}
         onImport={() => void handleImport()}
         onOpenWordlist={() => setView({ kind: "wordlist" })}
+        onOpenSettings={() => setView({ kind: "settings" })}
         audioQueueStatus={audioQueueStatus}
         onQueueAudio={enqueueBookAudio}
         onCancelAudioQueue={cancelAudioQueue}

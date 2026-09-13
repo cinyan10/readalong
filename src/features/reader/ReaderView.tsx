@@ -35,6 +35,7 @@ import {
   type ToggleHighlightInput,
 } from "@/lib/api";
 import { errorMessage } from "@/lib/errors";
+import { useSettings } from "@/lib/settings";
 import type {
   BookSearchResult,
   ChapterPayload,
@@ -144,6 +145,7 @@ export function ReaderView({
   onBack: () => void;
   registerLeaveRequestHandler: (handler: () => void) => () => void;
 }) {
+  const { audioGenerationSpeed } = useSettings();
   const [reader, setReader] = useState<ReaderPayload | null>(null);
   const [chapter, setChapter] = useState<ChapterPayload | null>(null);
   const [chapterIndex, setChapterIndex] = useState(initialChapterIndex ?? 0);
@@ -1530,7 +1532,13 @@ export function ReaderView({
       });
       setGeneratingAudio(true);
       try {
-        const payload = await generatePartAudio(bookId, chapterIndex, activePart.part_index, regenerate);
+        const payload = await generatePartAudio(
+          bookId,
+          chapterIndex,
+          activePart.part_index,
+          regenerate,
+          audioGenerationSpeed,
+        );
         setPartAudio(payload);
         if (payload.alignment_error) {
           toast.warning(regenerate ? "Audio regenerated, word sync failed." : "Audio generated, word sync failed.", {
@@ -1546,7 +1554,7 @@ export function ReaderView({
         setAudioProgress(null);
       }
     },
-    [activePart, bookId, chapterIndex, partParagraphCount],
+    [activePart, audioGenerationSpeed, bookId, chapterIndex, partParagraphCount],
   );
 
   const startAudioQueue = useCallback(
@@ -1629,7 +1637,13 @@ export function ReaderView({
                 }
               : current,
           );
-          const payload = await generatePartAudio(bookId, item.chapterIndex, item.partIndex, false);
+          const payload = await generatePartAudio(
+            bookId,
+            item.chapterIndex,
+            item.partIndex,
+            false,
+            audioGenerationSpeed,
+          );
           const selectedPart = selectedPartRef.current;
           if (payload.chapter_index === selectedPart.chapterIndex && payload.part_index === selectedPart.partIndex) {
             setPartAudio(payload);
@@ -1659,7 +1673,7 @@ export function ReaderView({
         }
       }
     },
-    [bookId, generatingAudio, reader],
+    [audioGenerationSpeed, bookId, generatingAudio, reader],
   );
 
   const stopWordPreview = useCallback(() => {

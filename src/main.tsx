@@ -4,6 +4,7 @@ import { Toaster } from "sonner";
 
 import App from "./App";
 import "./styles.css";
+import { SettingsProvider } from "@/lib/settings";
 import { ThemeProvider, useTheme } from "@/lib/theme";
 
 function ThemeToaster() {
@@ -14,8 +15,10 @@ function ThemeToaster() {
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <ThemeProvider>
-      <App />
-      <ThemeToaster />
+      <SettingsProvider>
+        <App />
+        <ThemeToaster />
+      </SettingsProvider>
     </ThemeProvider>
   </React.StrictMode>,
 );

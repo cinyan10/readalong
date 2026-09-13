@@ -13,14 +13,16 @@ use tauri::{Emitter, State, Window};
 use crate::cefr;
 use crate::db::{self, GeneratedAudioParagraph, GeneratedPartAudio, ImportOutcome};
 use crate::models::{
-    BookAudioPart, BookSummary, ChapterPayload, ImportFailure, ImportSummary, PartAlignmentPayload,
-    PartAudioPayload, ReaderHighlight, ReaderPayload, ReadingBookmark, WordlistEntry,
+    AudioPreviewPayload, BookAudioPart, BookSummary, ChapterPayload, ImportFailure, ImportSummary,
+    PartAlignmentPayload, PartAudioPayload, ReaderHighlight, ReaderPayload, ReadingBookmark,
+    WordlistEntry,
 };
 use crate::AppState;
 
 mod pronunciation;
 
 const DEFAULT_AUDIO_VOICE: &str = "bf_emma";
+#[cfg(test)]
 const DEFAULT_AUDIO_SPEED: f64 = 0.95;
 const PARAGRAPH_SILENCE_SECONDS: f64 = 0.22;
 const TITLE_AUDIO_BLOCK_BASE: i64 = -1_000_000_000_000;

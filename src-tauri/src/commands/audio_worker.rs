@@ -218,6 +218,7 @@ fn cached_audio_matches_current_format(
     part_index: i64,
     voice: &str,
     pronunciation: &pronunciation::JapanesePronunciation,
+    speed: f64,
 ) -> anyhow::Result<bool> {
     let paragraphs = db::part_audio_paragraphs(connection, book_id, chapter_index, part_index)?;
     let existing =
@@ -232,7 +233,11 @@ fn cached_audio_matches_current_format(
             return Ok(false);
         };
         if !Path::new(&generated.audio_path).exists()
-            || generated.text_hash != hash_text(&tts_pronunciation_text_for_book(&paragraph.text, pronunciation))
+            || generated.text_hash
+                != hash_audio_text(
+                    &tts_pronunciation_text_for_book(&paragraph.text, pronunciation),
+                    speed,
+                )
         {
             return Ok(false);
         }
@@ -253,7 +258,11 @@ fn cached_audio_matches_current_format(
         .get(&title_block_index)
         .is_some_and(|paragraph| {
             Path::new(&paragraph.audio_path).exists()
-                && paragraph.text_hash == hash_text(&tts_pronunciation_text_for_book(title, pronunciation))
+                && paragraph.text_hash
+                    == hash_audio_text(
+                        &tts_pronunciation_text_for_book(title, pronunciation),
+                        speed,
+                    )
         }))
 }
 
@@ -420,6 +429,10 @@ fn default_python_path(repo_root: &Path) -> PathBuf {
 
 fn hash_text(text: &str) -> String {
     format!("{:x}", Sha256::digest(text.as_bytes()))
+}
+
+fn hash_audio_text(text: &str, speed: f64) -> String {
+    hash_text(&format!("speed={speed:.2}\n{text}"))
 }
 
 #[cfg(test)]
@@ -685,6 +698,14 @@ mod tests {
     }
 
     #[test]
+    fn generation_speed_changes_the_cached_audio_hash() {
+        assert_ne!(
+            hash_audio_text("A measured sentence.", 0.95),
+            hash_audio_text("A measured sentence.", 1.25),
+        );
+    }
+
+    #[test]
     fn book_audio_availability_requires_part_files() {
         let root = std::env::temp_dir().join(format!(
             "readalong-audio-availability-{}-{}",
@@ -786,7 +807,10 @@ mod tests {
             std::fs::write(&audio_path, []).expect("audio block file");
             let pronunciation =
                 pronunciation::JapanesePronunciation::for_book_texts(&[text.to_string()]);
-            let hash = hash_text(&tts_pronunciation_text_for_book(audio_text, &pronunciation));
+            let hash = hash_audio_text(
+                &tts_pronunciation_text_for_book(audio_text, &pronunciation),
+                DEFAULT_AUDIO_SPEED,
+            );
             connection
                 .execute(
                     "INSERT INTO audio_paragraphs (book_id, chapter_index, part_index, block_index, voice, text_hash, audio_path, duration_seconds, created_at, updated_at) VALUES (1, ?, 0, ?, ?, ?, ?, 1, ?, ?)",

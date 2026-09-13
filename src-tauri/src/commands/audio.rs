@@ -21,6 +21,70 @@ pub fn get_part_audio(
 }
 
 #[tauri::command]
+pub async fn generate_audio_preview(
+    speed: f64,
+    state: State<'_, AppState>,
+) -> Result<AudioPreviewPayload, String> {
+    if !speed.is_finite() || !(0.5..=2.0).contains(&speed) {
+        return Err("Audio speed must be between 0.5 and 2.0.".to_string());
+    }
+
+    const PREVIEW_TEXT: &str =
+        "A quiet morning is the perfect time to open a book and discover somewhere new.";
+    let output_dir = state
+        .data_dir
+        .join("audio")
+        .join("previews")
+        .join(DEFAULT_AUDIO_VOICE)
+        .join(format!("speed-{:03}", (speed * 100.0).round() as u32));
+    fs::create_dir_all(&output_dir).map_err(|error| error.to_string())?;
+
+    let request_path = output_dir.join("request.json");
+    let response_path = output_dir.join("response.json");
+    let request = GeneratorRequest {
+        voice: DEFAULT_AUDIO_VOICE.to_string(),
+        speed,
+        part_output_path: path_to_string(output_dir.join("preview.wav")),
+        paragraphs: vec![GeneratorRequestParagraph {
+            block_index: 0,
+            text: PREVIEW_TEXT.to_string(),
+            output_path: path_to_string(output_dir.join("sample.wav")),
+        }],
+    };
+    fs::write(
+        &request_path,
+        serde_json::to_vec_pretty(&request).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())?;
+
+    let generator_request_path = request_path.clone();
+    let generator_response_path = response_path.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        run_kokoro_generator(
+            &generator_request_path,
+            &generator_response_path,
+            |_| {},
+        )
+    })
+    .await
+    .map_err(|error| format!("Kokoro preview task failed: {error}"))??;
+
+    let response: GeneratorResponse = serde_json::from_slice(
+        &fs::read(&response_path)
+            .map_err(|error| format!("Unable to read preview response: {error}"))?,
+    )
+    .map_err(|error| format!("Invalid preview response: {error}"))?;
+
+    Ok(AudioPreviewPayload {
+        text: PREVIEW_TEXT.to_string(),
+        voice: response.voice,
+        speed,
+        audio_path: response.part_path,
+        duration_seconds: response.duration_seconds,
+    })
+}
+
+#[tauri::command]
 pub fn get_part_alignment(
     book_id: i64,
     chapter_index: i64,
@@ -120,9 +184,13 @@ pub async fn generate_part_audio(
     chapter_index: i64,
     part_index: i64,
     regenerate: bool,
+    speed: f64,
     state: State<'_, AppState>,
     window: Window,
 ) -> Result<PartAudioPayload, String> {
+    if !speed.is_finite() || !(0.5..=2.0).contains(&speed) {
+        return Err("Audio speed must be between 0.5 and 2.0.".to_string());
+    }
     let pronunciation = {
         let connection = state
             .db
@@ -156,6 +224,7 @@ pub async fn generate_part_audio(
                     part_index,
                     &audio.voice,
                     &pronunciation,
+                    speed,
                 )
                 .map_err(|error| error.to_string())?
                 {
@@ -200,7 +269,7 @@ pub async fn generate_part_audio(
         if !title.is_empty() {
             let tts_text = tts_pronunciation_text_for_book(title, &pronunciation);
             let block_index = title_audio_block_index(chapter_index);
-            paragraph_hashes.insert(block_index, hash_text(&tts_text));
+            paragraph_hashes.insert(block_index, hash_audio_text(&tts_text, speed));
             request_paragraphs.push(GeneratorRequestParagraph {
                 block_index,
                 text: tts_text,
@@ -210,7 +279,7 @@ pub async fn generate_part_audio(
     }
     request_paragraphs.extend(paragraphs.iter().map(|paragraph| {
         let tts_text = tts_pronunciation_text_for_book(&paragraph.text, &pronunciation);
-        let text_hash = hash_text(&tts_text);
+        let text_hash = hash_audio_text(&tts_text, speed);
         paragraph_hashes.insert(paragraph.block_index, text_hash);
         GeneratorRequestParagraph {
             block_index: paragraph.block_index,
@@ -223,7 +292,7 @@ pub async fn generate_part_audio(
 
     let request = GeneratorRequest {
         voice: DEFAULT_AUDIO_VOICE.to_string(),
-        speed: DEFAULT_AUDIO_SPEED,
+        speed,
         part_output_path: path_to_string(part_output_path),
         paragraphs: request_paragraphs,
     };

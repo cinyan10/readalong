@@ -1,5 +1,5 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { AudioLinesIcon, BookMarkedIcon, BookOpenTextIcon, ImportIcon, LibraryIcon, XIcon } from "lucide-react";
+import { AudioLinesIcon, BookMarkedIcon, BookOpenTextIcon, ImportIcon, LibraryIcon, SettingsIcon, XIcon } from "lucide-react";
 import { useEffect, useState, type MouseEvent as ReactMouseEvent } from "react";
 
 import type { BookSummary } from "@/types";
@@ -15,6 +15,7 @@ export function LibraryView({
   importing,
   onImport,
   onOpenWordlist,
+  onOpenSettings,
   onOpenBook,
   audioQueueStatus,
   onQueueAudio,
@@ -25,6 +26,7 @@ export function LibraryView({
   importing: boolean;
   onImport: () => void;
   onOpenWordlist: () => void;
+  onOpenSettings: () => void;
   onOpenBook: (book: BookSummary) => void;
   audioQueueStatus: BookAudioQueueStatus | null;
   onQueueAudio: (book: BookSummary) => void;
@@ -78,6 +80,9 @@ export function LibraryView({
           </div>
           <div className="flex items-center gap-2">
             <ThemeModeControl />
+            <Button variant="ghost" size="icon" onClick={onOpenSettings} aria-label="Open settings" title="Settings">
+              <SettingsIcon />
+            </Button>
             <Button variant="secondary" onClick={onOpenWordlist}>
               <BookMarkedIcon data-icon="inline-start" />
               Word list

@@ -172,6 +172,15 @@ pub struct PartAudioPayload {
     pub alignment_error: Option<String>,
 }
 
+#[derive(Debug, Serialize)]
+pub struct AudioPreviewPayload {
+    pub text: String,
+    pub voice: String,
+    pub speed: f64,
+    pub audio_path: String,
+    pub duration_seconds: f64,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct AlignmentToken {
     pub block_index: i64,

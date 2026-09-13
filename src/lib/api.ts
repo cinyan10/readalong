@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 import type {
   BookSearchResult,
+  AudioPreviewPayload,
   BookAudioPart,
   BookSummary,
   ChapterPayload,
@@ -156,16 +157,27 @@ export function getPartAudio(bookId: number, chapterIndex: number, partIndex: nu
   return invoke<PartAudioPayload | null>("get_part_audio", { bookId, chapterIndex, partIndex });
 }
 
+export function generateAudioPreview(speed: number) {
+  return invoke<AudioPreviewPayload>("generate_audio_preview", { speed });
+}
+
 export function getPartAlignment(bookId: number, chapterIndex: number, partIndex: number) {
   return invoke<PartAlignmentPayload | null>("get_part_alignment", { bookId, chapterIndex, partIndex });
 }
 
-export function generatePartAudio(bookId: number, chapterIndex: number, partIndex: number, regenerate: boolean) {
+export function generatePartAudio(
+  bookId: number,
+  chapterIndex: number,
+  partIndex: number,
+  regenerate: boolean,
+  speed: number,
+) {
   return invoke<PartAudioPayload>("generate_part_audio", {
     bookId,
     chapterIndex,
     partIndex,
     regenerate,
+    speed,
   });
 }
 
