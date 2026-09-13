@@ -5,6 +5,8 @@ import type { ActiveSearchResult, ChapterFindRange, ColorMode } from "../reader-
 import { caseInsensitiveTextRange, timedTokenKey } from "../reader-utils";
 import { wordlistTokenKey } from "@/features/wordlist/wordlist-utils";
 
+const HIGHLIGHT_BOUNDARIES = new Set([".", "!", "?", ",", ";", ":", "…", "—", "。", "！", "？", "，", "；", "："]);
+
 export function ReaderTokens({
   bookId,
   block,
@@ -188,7 +190,7 @@ function sentenceRangeForActiveToken(
 
   let start = 0;
   for (let index = activeIndex - 1; index >= 0; index -= 1) {
-    if (isSentenceTerminator(block.tokens[index].text)) {
+    if (isHighlightBoundary(block.tokens[index].text)) {
       start = index + 1;
       break;
     }
@@ -196,7 +198,7 @@ function sentenceRangeForActiveToken(
 
   let end = block.tokens.length;
   for (let index = activeIndex; index < block.tokens.length; index += 1) {
-    if (isSentenceTerminator(block.tokens[index].text)) {
+    if (isHighlightBoundary(block.tokens[index].text)) {
       end = index + 1;
       while (end < block.tokens.length && isClosingSentencePunctuation(block.tokens[end].text)) {
         end += 1;
@@ -208,8 +210,8 @@ function sentenceRangeForActiveToken(
   return { start, end };
 }
 
-function isSentenceTerminator(text: string) {
-  return text === "." || text === "!" || text === "?";
+function isHighlightBoundary(text: string) {
+  return HIGHLIGHT_BOUNDARIES.has(text.trim());
 }
 
 function isClosingSentencePunctuation(text: string) {
