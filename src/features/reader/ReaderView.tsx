@@ -4,7 +4,9 @@ import {
   AudioLinesIcon,
   BookMarkedIcon,
   BookmarkIcon,
+  ChartNoAxesColumnIncreasingIcon,
   ChevronLeftIcon,
+  GraduationCapIcon,
   MenuIcon,
   SearchIcon,
 } from "lucide-react";
@@ -2630,6 +2632,19 @@ export function ReaderView({
             </div>
             <div className="flex items-center justify-end gap-2">
               {navAudioProgress ? <AudioNavProgress progress={navAudioProgress} /> : null}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setColorMode((current) => current === "frequency" ? "cefr" : "frequency")}
+                    aria-label={`Word colouring: ${colorMode === "frequency" ? "Frequency" : "CEFR"}. Switch to ${colorMode === "frequency" ? "CEFR" : "Frequency"}`}
+                  >
+                    {colorMode === "frequency" ? <ChartNoAxesColumnIncreasingIcon /> : <GraduationCapIcon />}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{`Word colouring: ${colorMode === "frequency" ? "Frequency" : "CEFR"}`}</TooltipContent>
+              </Tooltip>
               <ThemeModeControl />
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -2734,19 +2749,6 @@ export function ReaderView({
                   <div className="part-stats" aria-label="Part statistics">
                     {activePart && activeChapter && activeChapter.parts.length > 1 ? <span className="part-label">{activePart.title}</span> : null}
                     <span>{partWordCount.toLocaleString()} words</span>
-                    <div className="color-mode-toggle" aria-label="Word color mode">
-                      {(["frequency", "cefr"] as const).map((mode) => (
-                        <button
-                          key={mode}
-                          className={cn(colorMode === mode && "active")}
-                          type="button"
-                          onClick={() => setColorMode(mode)}
-                          aria-pressed={colorMode === mode}
-                        >
-                          {mode === "frequency" ? "Frequency" : "CEFR"}
-                        </button>
-                      ))}
-                    </div>
                     {partAudio ? (
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
