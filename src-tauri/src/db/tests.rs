@@ -12,6 +12,20 @@ mod tests {
     }
 
     #[test]
+    fn recognizes_numbered_chapter_title_formats() {
+        for title in [
+            "1 A regular chapter",
+            "1: A colon-prefixed chapter",
+            "Chapter001",
+        ] {
+            assert!(is_progress_chapter_title(title), "{title}");
+        }
+        for title in ["Copyright", "Cast of Characters", "Afterword"] {
+            assert!(!is_progress_chapter_title(title), "{title}");
+        }
+    }
+
+    #[test]
     fn groups_split_chapter_files_and_ornamental_dividers_into_parts() {
         let raw_chapters = vec![
             RawChapterSummary {
@@ -934,7 +948,7 @@ mod tests {
             .expect("book");
         for (chapter_index, title, source_href, start_block_index, end_block_index) in [
             (0, "Copyright", "copyright.xhtml", 0, 0),
-            (1, "0 Headingonly", "chapter000.xhtml", 1, 3),
+            (1, "0: Headingonly", "chapter000.xhtml", 1, 3),
             (2, "Translation Notes", "notes.xhtml", 4, 4),
         ] {
             connection
@@ -950,7 +964,7 @@ mod tests {
         }
         for (chapter_index, block_index, text) in [
             (0, 0, "copyrightonly copyrightonly"),
-            (1, 1, "0 Headingonly"),
+            (1, 1, "0: Headingonly"),
             (1, 2, "the wugalpha wugalpha wugalpha wugbeta wuggamma"),
             (1, 3, "wugalpha wugbeta"),
             (2, 4, "notesonly notesonly notesonly"),

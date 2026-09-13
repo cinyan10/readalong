@@ -49,10 +49,24 @@ fn chapter_group_title(title: &str, source_href: &str) -> String {
 }
 
 fn is_progress_chapter_title(title: &str) -> bool {
-    title
-        .split_whitespace()
-        .next()
-        .is_some_and(|first| first.chars().all(|character| character.is_ascii_digit()))
+    let Some(first) = title.split_whitespace().next() else {
+        return false;
+    };
+    let numeric_label = first.trim_end_matches(|character: char| character.is_ascii_punctuation());
+    if !numeric_label.is_empty()
+        && numeric_label
+            .chars()
+            .all(|character| character.is_ascii_digit())
+    {
+        return true;
+    }
+
+    first
+        .to_ascii_lowercase()
+        .strip_prefix("chapter")
+        .is_some_and(|number| {
+            !number.is_empty() && number.chars().all(|character| character.is_ascii_digit())
+        })
 }
 
 fn chapter_number_stem(stem: &str) -> Option<String> {

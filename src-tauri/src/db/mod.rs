@@ -133,7 +133,7 @@ CREATE TABLE IF NOT EXISTS book_word_frequencies (
 CREATE TABLE IF NOT EXISTS book_word_frequency_cache (
     book_id INTEGER PRIMARY KEY REFERENCES books(id) ON DELETE CASCADE,
     generated_at TEXT NOT NULL,
-    algorithm_version INTEGER NOT NULL DEFAULT 6
+    algorithm_version INTEGER NOT NULL DEFAULT 7
 );
 
 CREATE TABLE IF NOT EXISTS wordlist_entries (
@@ -238,7 +238,7 @@ pub enum ImportOutcome {
     Skipped,
 }
 
-const WORD_FREQUENCY_ALGORITHM_VERSION: i64 = 6;
+const WORD_FREQUENCY_ALGORITHM_VERSION: i64 = 7;
 
 #[derive(Debug)]
 pub struct AudioParagraphSource {
