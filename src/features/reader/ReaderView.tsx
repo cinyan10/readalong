@@ -211,6 +211,7 @@ export function ReaderView({
   const lastContextMenuAtRef = useRef(0);
   const lastChapterFindRevealKeyRef = useRef("");
   const lastMarkedWordKeyRef = useRef<string | null>(null);
+  const lastMarkedWordLocationRef = useRef<MarkedWordLocation | null>(null);
   const searchRequestRef = useRef(0);
   const lookupRequestRef = useRef(0);
   const audioQueueRunRef = useRef(0);
@@ -1245,6 +1246,7 @@ export function ReaderView({
 
   const jumpToMarkedWord = useCallback((location: MarkedWordLocation) => {
     lastMarkedWordKeyRef.current = location.key;
+    lastMarkedWordLocationRef.current = location;
     const tokenElement = tokenRefs.current[location.key];
     visibleBlockRef.current = location.blockIndex;
     setActiveTokenKey(location.key);
@@ -1267,6 +1269,21 @@ export function ReaderView({
       if (activeIndex !== -1) {
         const nextIndex = (activeIndex + direction + markedWordLocations.length) % markedWordLocations.length;
         jumpToMarkedWord(markedWordLocations[nextIndex]);
+        return;
+      }
+
+      const previousLocation = lastMarkedWordLocationRef.current;
+      if (previousLocation) {
+        const isAfterPrevious = (location: MarkedWordLocation) =>
+          location.blockIndex > previousLocation.blockIndex ||
+          (location.blockIndex === previousLocation.blockIndex && location.tokenIndex > previousLocation.tokenIndex);
+        if (direction === 1) {
+          jumpToMarkedWord(markedWordLocations.find(isAfterPrevious) ?? markedWordLocations[0]);
+          return;
+        }
+
+        const previousIndex = markedWordLocations.findIndex(isAfterPrevious) - 1;
+        jumpToMarkedWord(markedWordLocations[previousIndex >= 0 ? previousIndex : markedWordLocations.length - 1]);
         return;
       }
 
