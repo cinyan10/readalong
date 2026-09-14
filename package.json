@@ -8,7 +8,8 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "app:update": "bash scripts/update-macos-app.sh"
   },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "^1.1.19",
