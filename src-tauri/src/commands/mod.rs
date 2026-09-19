@@ -19,8 +19,6 @@ use crate::models::{
 };
 use crate::AppState;
 
-mod pronunciation;
-
 const DEFAULT_AUDIO_VOICE: &str = "bf_emma";
 #[cfg(test)]
 const DEFAULT_AUDIO_SPEED: f64 = 0.95;

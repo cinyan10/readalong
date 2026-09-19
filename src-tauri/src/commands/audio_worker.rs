@@ -217,7 +217,6 @@ fn cached_audio_matches_current_format(
     chapter_index: i64,
     part_index: i64,
     voice: &str,
-    pronunciation: &pronunciation::JapanesePronunciation,
     speed: f64,
 ) -> anyhow::Result<bool> {
     let paragraphs = db::part_audio_paragraphs(connection, book_id, chapter_index, part_index)?;
@@ -235,7 +234,7 @@ fn cached_audio_matches_current_format(
         if !Path::new(&generated.audio_path).exists()
             || generated.text_hash
                 != hash_audio_text(
-                    &tts_pronunciation_text_for_book(&paragraph.text, pronunciation),
+                    &tts_pronunciation_text(&paragraph.text),
                     speed,
                 )
         {
@@ -259,10 +258,7 @@ fn cached_audio_matches_current_format(
         .is_some_and(|paragraph| {
             Path::new(&paragraph.audio_path).exists()
                 && paragraph.text_hash
-                    == hash_audio_text(
-                        &tts_pronunciation_text_for_book(title, pronunciation),
-                        speed,
-                    )
+                    == hash_audio_text(&tts_pronunciation_text(title), speed)
         }))
 }
 
@@ -435,15 +431,7 @@ fn hash_audio_text(text: &str, speed: f64) -> String {
     hash_text(&format!("speed={speed:.2}\n{text}"))
 }
 
-#[cfg(test)]
 fn tts_pronunciation_text(text: &str) -> String {
-    tts_pronunciation_text_for_book(text, &pronunciation::JapanesePronunciation::empty())
-}
-
-fn tts_pronunciation_text_for_book(
-    text: &str,
-    pronunciation: &pronunciation::JapanesePronunciation,
-) -> String {
     let chars = text.chars().collect::<Vec<_>>();
     let mut out = String::with_capacity(text.len());
     let mut index = 0;
@@ -465,7 +453,7 @@ fn tts_pronunciation_text_for_book(
         index += 1;
     }
 
-    pronunciation.replace_names(&out)
+    out
 }
 
 fn stutter_pronunciation(chars: &[char], index: usize) -> Option<(String, usize)> {
@@ -674,26 +662,21 @@ mod tests {
     }
 
     #[test]
-    fn tts_text_only_replaces_rs_in_known_japanese_names() {
-        let pronunciation = pronunciation::JapanesePronunciation::for_book_texts(&[]);
+    fn tts_text_keeps_rs_in_japanese_names() {
         assert_eq!(
-            tts_pronunciation_text_for_book(
-                "H-Hachiman met Hiratsuka and Meguri.",
-                &pronunciation,
-            ),
-            "Hachiman met Hilatsuka and Meguli."
+            tts_pronunciation_text("H-Hachiman met Hiratsuka and Meguri."),
+            "Hachiman met Hiratsuka and Meguri."
         );
     }
 
     #[test]
-    fn pronunciation_output_changes_the_cached_audio_hash() {
-        let pronunciation = pronunciation::JapanesePronunciation::for_book_texts(&[]);
+    fn removing_r_to_l_correction_changes_the_cached_audio_hash() {
         assert_ne!(
-            hash_text("Hiratsuka answered."),
-            hash_text(&tts_pronunciation_text_for_book(
-                "Hiratsuka answered.",
-                &pronunciation,
-            ))
+            hash_audio_text("Hilatsuka answered.", DEFAULT_AUDIO_SPEED),
+            hash_audio_text(
+                &tts_pronunciation_text("Hiratsuka answered."),
+                DEFAULT_AUDIO_SPEED,
+            )
         );
     }
 
@@ -805,10 +788,8 @@ mod tests {
             (block_index, text, paragraph_path),
         ] {
             std::fs::write(&audio_path, []).expect("audio block file");
-            let pronunciation =
-                pronunciation::JapanesePronunciation::for_book_texts(&[text.to_string()]);
             let hash = hash_audio_text(
-                &tts_pronunciation_text_for_book(audio_text, &pronunciation),
+                &tts_pronunciation_text(audio_text),
                 DEFAULT_AUDIO_SPEED,
             );
             connection

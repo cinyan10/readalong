@@ -191,16 +191,6 @@ pub async fn generate_part_audio(
     if !speed.is_finite() || !(0.5..=2.0).contains(&speed) {
         return Err("Audio speed must be between 0.5 and 2.0.".to_string());
     }
-    let pronunciation = {
-        let connection = state
-            .db
-            .lock()
-            .map_err(|_| "Database lock failed.".to_string())?;
-        let book_texts = db::book_audio_texts(&connection, book_id)
-            .map_err(|error| error.to_string())?;
-        pronunciation::JapanesePronunciation::for_book_texts(&book_texts)
-    };
-
     {
         let connection = state
             .db
@@ -223,7 +213,6 @@ pub async fn generate_part_audio(
                     chapter_index,
                     part_index,
                     &audio.voice,
-                    &pronunciation,
                     speed,
                 )
                 .map_err(|error| error.to_string())?
@@ -267,7 +256,7 @@ pub async fn generate_part_audio(
     if part_index == 0 {
         let title = chapter_title.trim();
         if !title.is_empty() {
-            let tts_text = tts_pronunciation_text_for_book(title, &pronunciation);
+            let tts_text = tts_pronunciation_text(title);
             let block_index = title_audio_block_index(chapter_index);
             paragraph_hashes.insert(block_index, hash_audio_text(&tts_text, speed));
             request_paragraphs.push(GeneratorRequestParagraph {
@@ -278,7 +267,7 @@ pub async fn generate_part_audio(
         }
     }
     request_paragraphs.extend(paragraphs.iter().map(|paragraph| {
-        let tts_text = tts_pronunciation_text_for_book(&paragraph.text, &pronunciation);
+        let tts_text = tts_pronunciation_text(&paragraph.text);
         let text_hash = hash_audio_text(&tts_text, speed);
         paragraph_hashes.insert(paragraph.block_index, text_hash);
         GeneratorRequestParagraph {
