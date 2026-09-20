@@ -189,7 +189,19 @@ pub async fn lookup_word_with_cached_data(
         );
     }
 
-    let choice = choose_definition(&client, &selected_word, &context, &definitions).await;
+    let mut choice = choose_definition(&client, &selected_word, &context, &definitions).await;
+    if choice.matched == Some(false) {
+        let additional_entries = fetch_additional_entries(&client, &entries).await;
+        if !additional_entries.is_empty() {
+            definitions.extend(
+                additional_entries
+                    .iter()
+                    .flat_map(|entry| entry.definitions.clone()),
+            );
+            entries.extend(additional_entries);
+            choice = choose_definition(&client, &selected_word, &context, &definitions).await;
+        }
+    }
     let selected_definition = choice
         .entry_id
         .as_ref()
@@ -564,6 +576,72 @@ fn candidate_urls(html: &str, source_url: &str, word: &str) -> Vec<String> {
     urls
 }
 
+async fn fetch_additional_entries(client: &Client, entries: &[OxfordEntry]) -> Vec<OxfordEntry> {
+    let Some(first_entry) = entries.first() else {
+        return Vec::new();
+    };
+    let headword = entry_base_id(&first_entry.entry_id);
+    if headword.is_empty() {
+        return Vec::new();
+    }
+
+    let mut seen_ids = entries
+        .iter()
+        .map(|entry| entry.entry_id.clone())
+        .collect::<HashSet<_>>();
+    let mut additional_entries = Vec::new();
+
+    for url in numbered_entry_urls(headword, entries) {
+        let page = match fetch_page(client, &url).await {
+            Ok(page) => page,
+            Err(FetchError::NotFound) | Err(FetchError::Other(_)) => break,
+        };
+        let entry = parse_oxford_entry(&page.html, &page.source_url, &first_entry.word);
+        if seen_ids.contains(&entry.entry_id)
+            || !is_same_headword_entry(&entry.entry_id, headword)
+            || entry.definitions.is_empty()
+        {
+            break;
+        }
+        seen_ids.insert(entry.entry_id.clone());
+        additional_entries.push(entry);
+    }
+
+    additional_entries
+}
+
+fn numbered_entry_urls(headword: &str, entries: &[OxfordEntry]) -> Vec<String> {
+    let next_number = entries
+        .iter()
+        .filter_map(|entry| entry_number(&entry.entry_id, headword))
+        .max()
+        .unwrap_or(1)
+        + 1;
+
+    let encoded_headword = encode_component(headword);
+    (next_number..=MAX_CANDIDATE_PAGES)
+        .map(|number| format!("{OXFORD_BASE_URL}/{encoded_headword}_{number}?q={encoded_headword}"))
+        .collect()
+}
+
+fn entry_base_id(entry_id: &str) -> &str {
+    let Some((base, suffix)) = entry_id.rsplit_once('_') else {
+        return entry_id;
+    };
+    if !base.is_empty() && suffix.chars().all(|character| character.is_ascii_digit()) {
+        base
+    } else {
+        entry_id
+    }
+}
+
+fn entry_number(entry_id: &str, headword: &str) -> Option<usize> {
+    entry_id
+        .strip_prefix(&format!("{headword}_"))?
+        .parse::<usize>()
+        .ok()
+}
+
 fn push_candidate_url(urls: &mut Vec<String>, seen: &mut HashSet<String>, url: &str) {
     let canonical = url.split('#').next().unwrap_or(url).to_string();
     if seen.insert(canonical.clone()) {
@@ -933,6 +1011,21 @@ mod tests {
                 "https://www.oxfordlearnersdictionaries.com/definition/english/answer_1?q=answer",
                 "https://www.oxfordlearnersdictionaries.com/definition/english/answer_2?q=answer",
             ]
+        );
+    }
+
+    #[test]
+    fn builds_urls_for_unlisted_numbered_entries() {
+        let entry = parse_oxford_entry(
+            HTML,
+            "https://www.oxfordlearnersdictionaries.com/definition/english/answer_1?q=answer",
+            "answer",
+        );
+
+        assert_eq!(entry_base_id(&entry.entry_id), "answer");
+        assert_eq!(
+            numbered_entry_urls("answer", &[entry])[0],
+            "https://www.oxfordlearnersdictionaries.com/definition/english/answer_2?q=answer"
         );
     }
 
