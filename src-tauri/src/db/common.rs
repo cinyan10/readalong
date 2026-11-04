@@ -58,10 +58,16 @@ fn is_fallback_chapter_title(title: &str, source_href: &str) -> bool {
 }
 
 fn is_progress_chapter_title(title: &str) -> bool {
-    let Some(first) = title.split_whitespace().next() else {
+    let mut words = title.split_whitespace();
+    let Some(first) = words.next() else {
         return false;
     };
-    let numeric_label = first.trim_end_matches(|character: char| character.is_ascii_punctuation());
+    let label = if first.eq_ignore_ascii_case("chapter") {
+        words.next().unwrap_or_default()
+    } else {
+        first
+    };
+    let numeric_label = label.trim_end_matches(|character: char| character.is_ascii_punctuation());
     if !numeric_label.is_empty()
         && numeric_label
             .chars()

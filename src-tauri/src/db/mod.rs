@@ -238,7 +238,7 @@ pub enum ImportOutcome {
     Skipped,
 }
 
-const WORD_FREQUENCY_ALGORITHM_VERSION: i64 = 7;
+const WORD_FREQUENCY_ALGORITHM_VERSION: i64 = 8;
 
 #[derive(Debug)]
 pub struct AudioParagraphSource {

@@ -17,10 +17,18 @@ mod tests {
             "1 A regular chapter",
             "1: A colon-prefixed chapter",
             "Chapter001",
+            "Chapter 1: Meeting an Angel",
+            "CHAPTER 14: Christmas for Two",
         ] {
             assert!(is_progress_chapter_title(title), "{title}");
         }
-        for title in ["Copyright", "Cast of Characters", "Afterword"] {
+        for title in [
+            "Copyright",
+            "Cast of Characters",
+            "Afterword",
+            "Chapter",
+            "Chapter Notes",
+        ] {
             assert!(!is_progress_chapter_title(title), "{title}");
         }
     }
@@ -216,6 +224,36 @@ mod tests {
         assert_eq!(blocks.len(), 1);
         assert_eq!(blocks[0].block_index, 4);
         assert_eq!(blocks[0].text, "It was Sunday.");
+    }
+
+    #[test]
+    fn annotates_frequency_for_spaced_chapter_number_titles() {
+        let connection = frequency_test_connection();
+        connection
+            .execute(
+                "UPDATE book_chapters SET title = 'Chapter 1: Meeting an Angel' WHERE book_id = 1 AND chapter_index = 1",
+                [],
+            )
+            .expect("chapter title");
+        connection
+            .execute(
+                "INSERT INTO book_word_frequency_cache (book_id, generated_at, algorithm_version) VALUES (1, ?, 7)",
+                params![now_iso()],
+            )
+            .expect("old empty cache");
+
+        let frequencies = book_word_frequency_map(&connection, 1).expect("frequencies");
+        let block = ChapterBlock {
+            block_index: 2,
+            kind: "paragraph".to_string(),
+            text: "wugalpha".to_string(),
+            asset_path: None,
+            alt: String::new(),
+            tokens: Vec::new(),
+        };
+        let block = with_reader_tokens(block, &frequencies);
+        assert_eq!(block.tokens[0].frequency_count, Some(4));
+        assert_eq!(block.tokens[0].frequency_level, Some(CefrLevel::A2));
     }
 
     #[test]
