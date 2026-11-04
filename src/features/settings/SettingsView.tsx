@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { ThemeModeControl } from "@/components/ThemeModeControl";
+import { ReaderWidthControl } from "@/components/ReaderWidthControl";
 import { Button } from "@/components/ui/button";
 import { generateAudioPreview } from "@/lib/api";
 import { errorMessage } from "@/lib/errors";
@@ -61,6 +62,13 @@ export function SettingsView({ onBack }: { onBack: () => void }) {
       </header>
 
       <section className="mx-auto w-full max-w-3xl px-6 py-10 sm:py-14">
+        <div className="mb-10 flex flex-col gap-4 border-b pb-6">
+          <div>
+            <h2 className="m-0 text-xl font-semibold tracking-tight">Reading line length</h2>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">Aim for approximately 50–75 characters per line. The width scales with text size and fits smaller windows automatically.</p>
+          </div>
+          <ReaderWidthControl />
+        </div>
         <div className="mb-8 flex items-start gap-4">
           <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
             <Volume2Icon className="size-5" aria-hidden="true" />
