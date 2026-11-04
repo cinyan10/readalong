@@ -349,3 +349,33 @@ pub fn delete_part_alignment(
     )?;
     Ok(())
 }
+
+pub fn clear_book_audio(connection: &mut Connection, data_dir: &Path, book_id: i64) -> Result<()> {
+    let transaction = connection.transaction()?;
+    let exists: bool = transaction.query_row(
+        "SELECT EXISTS(SELECT 1 FROM books WHERE id = ?)",
+        [book_id],
+        |row| row.get(0),
+    )?;
+    if !exists {
+        return Err(anyhow!("Book not found."));
+    }
+
+    for table in ["audio_parts", "audio_paragraphs", "audio_alignments"] {
+        transaction.execute(&format!("DELETE FROM {table} WHERE book_id = ?"), [book_id])?;
+    }
+
+    // Delete only the book's managed audio directory, never paths from cached records.
+    let audio_root = data_dir.join("audio");
+    let book_dir = audio_root.join(format!("book-{book_id}"));
+    if book_dir.try_exists()? {
+        let canonical_root = audio_root.canonicalize()?;
+        let canonical_book = book_dir.canonicalize()?;
+        if book_dir.is_symlink() || canonical_book.parent() != Some(canonical_root.as_path()) {
+            return Err(anyhow!("The book's audio directory is outside managed storage."));
+        }
+        fs::remove_dir_all(&book_dir).context("Unable to clear the book's audio files")?;
+    }
+    transaction.commit()?;
+    Ok(())
+}

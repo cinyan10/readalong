@@ -3,6 +3,73 @@ mod tests {
     use super::*;
 
     #[test]
+    fn clears_only_selected_book_audio_and_preserves_reading_data() {
+        let mut connection = search_test_connection();
+        connection.execute_batch(
+            "INSERT INTO books (id, slug, title, content_hash, original_filename, stored_path, created_at, updated_at)
+             VALUES (2, 'other', 'Other', 'other', 'other.epub', '/tmp/other.epub', '', '');
+             INSERT INTO reading_progress (book_id, last_read_at, progress_percent) VALUES (1, '', 75);
+             INSERT INTO bookmarks (book_id, created_at, updated_at) VALUES (1, '', '');"
+        ).expect("reading data");
+        let root = std::env::temp_dir().join(format!("readalong-clear-audio-{}-{}", std::process::id(), Utc::now().timestamp_nanos_opt().unwrap()));
+        for book_id in [1, 2] {
+            let directory = root.join(format!("audio/book-{book_id}/chapter-0/part-0/voice"));
+            fs::create_dir_all(&directory).expect("audio directory");
+            let audio = directory.join("part.wav");
+            fs::write(&audio, b"audio").expect("audio file");
+            fs::write(directory.join("alignment.json"), b"{}").expect("alignment");
+            for voice in ["bf_emma", "other_voice"] {
+                connection.execute(
+                    "INSERT INTO audio_parts (book_id, chapter_index, part_index, voice, audio_path, created_at, updated_at) VALUES (?, 0, 0, ?, ?, '', '')",
+                    params![book_id, voice, audio.to_string_lossy()],
+                ).expect("part");
+                connection.execute(
+                    "INSERT INTO audio_paragraphs (book_id, chapter_index, part_index, block_index, voice, text_hash, audio_path, created_at, updated_at) VALUES (?, 0, 0, 0, ?, '', ?, '', '')",
+                    params![book_id, voice, audio.to_string_lossy()],
+                ).expect("paragraph");
+                connection.execute(
+                    "INSERT INTO audio_alignments (book_id, chapter_index, part_index, voice, audio_path, created_at, updated_at) VALUES (?, 0, 0, ?, ?, '', '')",
+                    params![book_id, voice, audio.to_string_lossy()],
+                ).expect("alignment record");
+            }
+        }
+
+        clear_book_audio(&mut connection, &root, 1).expect("clear audio");
+        assert!(!root.join("audio/book-1").exists());
+        assert!(root.join("audio/book-2/chapter-0/part-0/voice/part.wav").exists());
+        for table in ["audio_parts", "audio_paragraphs", "audio_alignments"] {
+            let count: i64 = connection.query_row(&format!("SELECT COUNT(*) FROM {table} WHERE book_id = 1"), [], |row| row.get(0)).unwrap();
+            assert_eq!(count, 0, "{table}");
+            let count: i64 = connection.query_row(&format!("SELECT COUNT(*) FROM {table} WHERE book_id = 2"), [], |row| row.get(0)).unwrap();
+            assert_eq!(count, 2, "{table}");
+        }
+        let progress: f64 = connection.query_row("SELECT progress_percent FROM reading_progress WHERE book_id = 1", [], |row| row.get(0)).unwrap();
+        assert_eq!(progress, 75.0);
+        let bookmarks: i64 = connection.query_row("SELECT COUNT(*) FROM bookmarks WHERE book_id = 1", [], |row| row.get(0)).unwrap();
+        assert_eq!(bookmarks, 1);
+        assert!(get_reader(&connection, 1).unwrap().is_some());
+        clear_book_audio(&mut connection, &root, 1).expect("already cleared audio");
+        assert!(clear_book_audio(&mut connection, &root, 999).is_err());
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn refuses_to_clear_symlinked_book_audio() {
+        let mut connection = search_test_connection();
+        let root = std::env::temp_dir().join(format!("readalong-clear-symlink-{}-{}", std::process::id(), Utc::now().timestamp_nanos_opt().unwrap()));
+        fs::create_dir_all(root.join("audio/book-2")).unwrap();
+        fs::write(root.join("audio/book-2/part.wav"), b"preserve").unwrap();
+        std::os::unix::fs::symlink(root.join("audio/book-2"), root.join("audio/book-1")).unwrap();
+        connection.execute_batch("INSERT INTO audio_parts (book_id, chapter_index, part_index, voice, audio_path, created_at, updated_at) VALUES (1, 0, 0, 'voice', 'unused', '', '')").unwrap();
+        assert!(clear_book_audio(&mut connection, &root, 1).is_err());
+        assert!(root.join("audio/book-2/part.wav").exists());
+        let count: i64 = connection.query_row("SELECT COUNT(*) FROM audio_parts WHERE book_id = 1", [], |row| row.get(0)).unwrap();
+        assert_eq!(count, 1);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn slugifies_titles_for_storage() {
         assert_eq!(
             slugify("My Youth Romantic Comedy, Vol. 1"),

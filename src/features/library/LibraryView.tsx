@@ -1,6 +1,7 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { AudioLinesIcon, BookMarkedIcon, BookOpenTextIcon, ImportIcon, LibraryIcon, SettingsIcon, XIcon } from "lucide-react";
+import { AudioLinesIcon, BookMarkedIcon, BookOpenTextIcon, ImportIcon, LibraryIcon, SettingsIcon, Trash2Icon, XIcon } from "lucide-react";
 import { useEffect, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { toast } from "sonner";
 
 import type { BookSummary } from "@/types";
 import type { BookAudioQueueStatus } from "@/App";
@@ -8,6 +9,9 @@ import { Button } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ThemeModeControl } from "@/components/ThemeModeControl";
+
+import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { errorMessage } from "@/lib/errors";
 
 export function LibraryView({
   books,
@@ -19,6 +23,7 @@ export function LibraryView({
   onOpenBook,
   audioQueueStatus,
   onQueueAudio,
+  onClearAudio,
   onCancelAudioQueue,
 }: {
   books: BookSummary[];
@@ -30,8 +35,11 @@ export function LibraryView({
   onOpenBook: (book: BookSummary) => void;
   audioQueueStatus: BookAudioQueueStatus | null;
   onQueueAudio: (book: BookSummary) => void;
+  onClearAudio: (book: BookSummary) => Promise<void>;
   onCancelAudioQueue: () => void;
 }) {
+  const [clearAudioBook, setClearAudioBook] = useState<BookSummary | null>(null);
+  const [clearingAudio, setClearingAudio] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ book: BookSummary; x: number; y: number } | null>(null);
 
   useEffect(() => {
@@ -56,13 +64,32 @@ export function LibraryView({
 
   const openContextMenu = (event: ReactMouseEvent, book: BookSummary) => {
     event.preventDefault();
-    const width = 188;
-    const height = 48;
+    const width = 220;
+    const height = 92;
     setContextMenu({
       book,
       x: Math.min(event.clientX, window.innerWidth - width - 12),
       y: Math.min(event.clientY, window.innerHeight - height - 12),
     });
+  };
+
+  const clearAudioDisabledReason = () => {
+    if (audioQueueStatus) return "Wait for the audio queue to finish.";
+    return undefined;
+  };
+
+  const handleClearAudio = async () => {
+    if (!clearAudioBook || clearingAudio) return;
+    setClearingAudio(true);
+    try {
+      await onClearAudio(clearAudioBook);
+      toast.success(`Audio cleared for ${clearAudioBook.title}.`);
+      setClearAudioBook(null);
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to clear audio."));
+    } finally {
+      setClearingAudio(false);
+    }
   };
 
   return (
@@ -168,8 +195,43 @@ export function LibraryView({
             <AudioLinesIcon aria-hidden="true" />
             Generate missing audio
           </button>
+          <button
+            type="button"
+            disabled={Boolean(clearAudioDisabledReason())}
+            title={clearAudioDisabledReason()}
+            onClick={() => {
+              setClearAudioBook(contextMenu.book);
+              setContextMenu(null);
+            }}
+          >
+            <Trash2Icon aria-hidden="true" />
+            Clear audio…
+          </button>
         </div>
       ) : null}
+      <AlertDialog open={Boolean(clearAudioBook)} onOpenChange={(open) => {
+        if (!open && !clearingAudio) setClearAudioBook(null);
+      }}>
+        <AlertDialogContent aria-busy={clearingAudio}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clear this book’s audio?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Delete all generated audio and word timing files for {clearAudioBook?.title} to free up space.
+              Your book, reading progress, bookmarks, and saved words will stay. You can generate audio again later.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={clearingAudio}>Cancel</AlertDialogCancel>
+            <Button
+              variant="destructive"
+              disabled={clearingAudio || Boolean(clearAudioBook && clearAudioDisabledReason())}
+              onClick={() => void handleClearAudio()}
+            >
+              {clearingAudio ? "Clearing audio…" : "Clear audio"}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </main>
   );
 }

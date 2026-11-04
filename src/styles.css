@@ -407,8 +407,13 @@ svg {
   cursor: pointer;
 }
 
-.library-context-menu button:hover,
-.library-context-menu button:focus-visible {
+.library-context-menu button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.library-context-menu button:hover:not(:disabled),
+.library-context-menu button:focus-visible:not(:disabled) {
   background: oklch(var(--accent));
   color: oklch(var(--accent-foreground));
   outline: 0;

@@ -19,7 +19,8 @@ use tauri::{Emitter, Manager, RunEvent, WindowEvent};
 
 pub struct AppState {
     data_dir: PathBuf,
-    db: Mutex<Connection>,
+    db: Arc<Mutex<Connection>>,
+    audio_generation: tauri::async_runtime::Mutex<()>,
     prefetch_running: Arc<AtomicBool>,
 }
 
@@ -44,7 +45,8 @@ pub fn run() {
             let prefetch_running = Arc::new(AtomicBool::new(false));
             app.manage(AppState {
                 data_dir: data_dir.clone(),
-                db: Mutex::new(connection),
+                db: Arc::new(Mutex::new(connection)),
+                audio_generation: tauri::async_runtime::Mutex::new(()),
                 prefetch_running: Arc::clone(&prefetch_running),
             });
             if should_resume_prefetch {
@@ -155,6 +157,7 @@ pub fn run() {
             commands::list_book_highlights,
             commands::toggle_highlight,
             commands::get_part_audio,
+            commands::clear_book_audio,
             commands::generate_audio_preview,
             commands::get_part_alignment,
             commands::generate_part_audio,

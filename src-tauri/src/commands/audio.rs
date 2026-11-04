@@ -28,6 +28,7 @@ pub async fn generate_audio_preview(
     if !speed.is_finite() || !(0.5..=2.0).contains(&speed) {
         return Err("Audio speed must be between 0.5 and 2.0.".to_string());
     }
+    let _generation_guard = state.audio_generation.lock().await;
 
     const PREVIEW_TEXT: &str =
         "A quiet morning is the perfect time to open a book and discover somewhere new.";
@@ -113,6 +114,7 @@ pub async fn sync_part_alignment(
     regenerate: bool,
     state: State<'_, AppState>,
 ) -> Result<PartAlignmentPayload, String> {
+    let _generation_guard = state.audio_generation.lock().await;
     if !regenerate {
         let connection = state
             .db
@@ -191,6 +193,7 @@ pub async fn generate_part_audio(
     if !speed.is_finite() || !(0.5..=2.0).contains(&speed) {
         return Err("Audio speed must be between 0.5 and 2.0.".to_string());
     }
+    let _generation_guard = state.audio_generation.lock().await;
     {
         let connection = state
             .db
@@ -431,4 +434,19 @@ pub async fn generate_part_audio(
         "complete",
     );
     Ok(saved)
+}
+
+#[tauri::command]
+pub async fn clear_book_audio(book_id: i64, state: State<'_, AppState>) -> Result<(), String> {
+    let _generation_guard = state.audio_generation.try_lock()
+        .map_err(|_| "Wait for audio generation or word syncing to finish before clearing audio.".to_string())?;
+    let database = Arc::clone(&state.db);
+    let data_dir = state.data_dir.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut connection = database.lock().map_err(|_| "Database lock failed.".to_string())?;
+        db::clear_book_audio(&mut connection, &data_dir, book_id)
+            .map_err(|error| format!("{error:#}"))
+    })
+    .await
+    .map_err(|error| format!("Audio cleanup task failed: {error}"))?
 }

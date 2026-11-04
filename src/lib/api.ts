@@ -20,6 +20,10 @@ export function listBooks() {
   return invoke<BookSummary[]>("list_books");
 }
 
+export function clearBookAudio(bookId: number) {
+  return invoke<void>("clear_book_audio", { bookId });
+}
+
 export function listMissingBookAudioParts(bookId: number) {
   return invoke<BookAudioPart[]>("list_missing_book_audio_parts", { bookId });
 }

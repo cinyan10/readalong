@@ -3,7 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { completeAppExit, generatePartAudio, importBooks, listBooks, listMissingBookAudioParts } from "@/lib/api";
+import { clearBookAudio, completeAppExit, generatePartAudio, importBooks, listBooks, listMissingBookAudioParts } from "@/lib/api";
 import { errorMessage } from "@/lib/errors";
 import type { BookAudioPart, BookSummary } from "@/types";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -44,6 +44,7 @@ function App() {
   const activeAudioBookIdRef = useRef<number | null>(null);
   const audioQueueRunningRef = useRef(false);
   const cancelAudioQueueRef = useRef(false);
+  const clearingAudioRef = useRef(false);
 
   const registerLeaveRequestHandler = useCallback((handler: LeaveRequestHandler) => {
     leaveRequestHandlerRef.current = handler;
@@ -208,6 +209,7 @@ function App() {
 
   const enqueueBookAudio = useCallback(
     (book: BookSummary) => {
+      if (clearingAudioRef.current) return false;
       if (queuedAudioBookIdsRef.current.has(book.id)) {
         toast.info(`${book.title} is already queued for audio.`);
         return;
@@ -246,6 +248,21 @@ function App() {
       current ? { ...current, queuedBookCount: 0, cancelling: true } : current,
     );
   }, []);
+
+  const handleClearBookAudio = async (book: BookSummary) => {
+    if (clearingAudioRef.current || audioQueueRunningRef.current || queuedAudioBookIdsRef.current.size) {
+      throw new Error("Wait for the audio queue to finish before clearing audio.");
+    }
+    clearingAudioRef.current = true;
+    try {
+      await clearBookAudio(book.id);
+      setBooks((current) => current.map((item) => item.id === book.id
+        ? { ...item, audio_generated_parts: 0, audio_percent: 0 }
+        : item));
+    } finally {
+      clearingAudioRef.current = false;
+    }
+  };
 
   const handleImport = async () => {
     const selected = await open({
@@ -328,6 +345,7 @@ function App() {
         onOpenSettings={() => setView({ kind: "settings" })}
         audioQueueStatus={audioQueueStatus}
         onQueueAudio={enqueueBookAudio}
+        onClearAudio={handleClearBookAudio}
         onCancelAudioQueue={cancelAudioQueue}
         onOpenBook={(book) =>
           setView({
