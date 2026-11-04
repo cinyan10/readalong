@@ -197,6 +197,7 @@ export function LibraryView({
           </button>
           <button
             type="button"
+            data-variant="destructive"
             disabled={Boolean(clearAudioDisabledReason())}
             title={clearAudioDisabledReason()}
             onClick={() => {

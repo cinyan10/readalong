@@ -26,7 +26,7 @@ export function WordContextMenu({
       <button type="button" onClick={onLookup}>
         Look up
       </button>
-      <button type="button" onClick={onToggleWordlist}>
+      <button type="button" data-variant={saved ? "destructive" : undefined} onClick={onToggleWordlist}>
         {saved ? "Remove from wordlist" : "Save to wordlist"}
       </button>
     </div>

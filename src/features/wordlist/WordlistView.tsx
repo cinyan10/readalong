@@ -120,7 +120,7 @@ export function WordlistView({
                 </button>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" onClick={() => removeEntry(entry)} aria-label={`Remove ${entry.root_word}`}>
+                    <Button variant="destructive" size="icon" onClick={() => removeEntry(entry)} aria-label={`Remove ${entry.root_word}`}>
                       <Trash2Icon />
                     </Button>
                   </TooltipTrigger>

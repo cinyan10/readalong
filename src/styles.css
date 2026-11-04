@@ -43,7 +43,7 @@
   --muted-foreground: 0.5341 0.0078 97.4503;
   --accent: 0.9245 0.0138 92.9892;
   --accent-foreground: 0.2671 0.0196 98.939;
-  --destructive: 0.1908 0.002 106.5859;
+  --destructive: 0.55 0.22 25;
   --destructive-foreground: 1 0 0;
   --border: 0.8847 0.0069 97.3627;
   --input: 0.7621 0.0156 98.3528;
@@ -1226,6 +1226,20 @@ svg {
 .reader-context-menu button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
+}
+
+.library-context-menu button[data-variant="destructive"],
+.reader-context-menu button[data-variant="destructive"] {
+  background: oklch(var(--destructive));
+  color: oklch(var(--destructive-foreground));
+}
+
+.library-context-menu button[data-variant="destructive"]:hover:not(:disabled),
+.library-context-menu button[data-variant="destructive"]:focus-visible:not(:disabled),
+.reader-context-menu button[data-variant="destructive"]:hover:not(:disabled),
+.reader-context-menu button[data-variant="destructive"]:focus-visible:not(:disabled) {
+  background: oklch(var(--destructive) / 0.9);
+  color: oklch(var(--destructive-foreground));
 }
 
 .chapter-context-menu {
